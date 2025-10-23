@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block head %}
+  <link rel="stylesheet" href="https://cdn.datatables.net/2.3.4/css/dataTables.dataTables.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <h1>{{ title }}</h1>
+  <div class="row">
+    <div class="col-md-6">
+      <form method="post" id="dashboard-form">
+        {% csrf_token %}
+        {{ form|crispy }}
+        <h2>Panels</h2>
+        <div id="panel-forms">
+          {{ formset.management_form }}
+          {% for form in formset %}
+            <div class="panel-form mb-3 border p-3">
+              {{ form|crispy }}
+              <button type="button" class="btn btn-info preview-btn" data-panel-index="{{ forloop.counter0 }}">Preview</button>
+            </div>
+          {% endfor %}
+        </div>
+        <button type="button" id="add-panel" class="btn btn-secondary mb-3">Add Another Panel</button>
+        <button type="submit" class="btn btn-success">Save</button>
+      </form>
+    </div>
+    <div class="col-md-6">
+      <h2>Preview</h2>
+      <div id="preview-pane" class="border p-3" style="min-height: 400px;">
+        <p class="text-muted">Click "Preview" on a panel to see results here.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.datatables.net/2.3.4/js/dataTables.min.js"></script>
+<script>
+document.getElementById('add-panel').addEventListener('click', function() {
+  const panelForms = document.getElementById('panel-forms');
+  const totalForms = document.querySelector('input[name$="-TOTAL_FORMS"]');
+  const formNum = parseInt(totalForms.value);
+  const newForm = panelForms.querySelector('.panel-form').cloneNode(true);
+  
+  // Update form indices
+  const inputs = newForm.querySelectorAll('input, select, textarea');
+  inputs.forEach(input => {
+    if (input.name) {
+      input.name = input.name.replace(/-\d+-/, `-${formNum}-`);
+      input.id = input.id.replace(/-\d+-/, `-${formNum}-`);
+    }
+    input.value = '';
+  });
+  
+  // Update labels
+  const labels = newForm.querySelectorAll('label');
+  labels.forEach(label => {
+    if (label.htmlFor) {
+      label.htmlFor = label.htmlFor.replace(/-\d+-/, `-${formNum}-`);
+    }
+  });
+  
+  // Update preview button
+  const previewBtn = newForm.querySelector('.preview-btn');
+  previewBtn.setAttribute('data-panel-index', formNum);
+  
+  panelForms.insertBefore(newForm, document.getElementById('add-panel'));
+  totalForms.value = formNum + 1;
+});
+
+// Preview functionality
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('preview-btn')) {
+    e.preventDefault();
+    const panelIndex = e.target.getAttribute('data-panel-index');
+    const panelForm = e.target.closest('.panel-form');
+    
+    const formData = new FormData();
+    const inputs = panelForm.querySelectorAll('input, select, textarea');
+    inputs.forEach(input => {
+      if (input.name && input.name.includes('x_field')) {
+        formData.append('x_field', input.value);
+      } else if (input.name && input.name.includes('y_field') && !input.name.includes('by_field')) {
+        formData.append('y_field', input.value);
+      } else if (input.name && input.name.includes('by_field')) {
+        formData.append('by_field', input.value);
+      } else if (input.name && input.name.includes('chart_type')) {
+        formData.append('chart_type', input.value);
+      } else if (input.name && input.name.includes('visualization_type')) {
+        formData.append('visualization_type', input.value);
+      } else if (input.name && input.name.includes('search')) {
+        formData.append('search', input.value);
+      }
+    });
+    
+    // Collect defaults from the dashboard form
+    const defaultsInput = document.querySelector('input[name="defaults"], textarea[name="defaults"]');
+    if (defaultsInput) {
+      formData.append('defaults', defaultsInput.value);
+    }
+    
+    document.getElementById('preview-pane').innerHTML = '<p>Loading preview...</p>';
+    
+    fetch('{% url "dashboarding:panel_preview" %}', {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+      }
+    })
+    .then(response => response.json())
+    .then(data => {
+      renderPreview(data);
+    })
+    .catch(error => {
+      document.getElementById('preview-pane').innerHTML = '<p class="text-danger">Error loading preview: ' + error.message + '</p>';
+    });
+  }
+});
+
+function renderPreview(data) {
+  const pane = document.getElementById('preview-pane');
+  if (data.error) {
+    pane.innerHTML = '<p class="text-danger">Error: ' + data.error + '</p>';
+    return;
+  }
+  
+  if (data.visualization_type === 'table') {
+    if (data.data && data.data.length > 0) {
+      let html = '<table class="table table-striped"><thead><tr>';
+      Object.keys(data.data[0]).forEach(key => {
+        html += '<th>' + key + '</th>';
+      });
+      html += '</tr></thead><tbody>';
+      data.data.forEach(row => {
+        html += '<tr>';
+        Object.values(row).forEach(value => {
+          html += '<td>' + value + '</td>';
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      pane.innerHTML = html;
+      // Initialize DataTable if needed
+      $(pane).find('table').DataTable();
+    } else {
+      pane.innerHTML = '<p class="text-muted">No data to display.</p>';
+    }
+  } else {
+    if (data.data && data.data.length > 0 && data.x_field && data.y_field) {
+      pane.innerHTML = '<canvas id="preview-chart" width="400" height="300"></canvas>';
+      const ctx = document.getElementById('preview-chart').getContext('2d');
+      // Simple chart rendering (similar to before)
+      const chartData = buildChartData(data.data, data.x_field, data.y_field, data.by_field);
+      new Chart(ctx, {
+        type: data.chart_type || 'line',
+        data: chartData,
+        options: { responsive: true }
+      });
+    } else {
+      pane.innerHTML = '<p class="text-muted">No data or missing fields for chart.</p>';
+    }
+  }
+}
+
+function buildChartData(rows, xField, yField, byField) {
+  function getByPath(obj, path) {
+    if (!obj || !path) return undefined;
+    return path.split('__').reduce((acc, k) => (acc == null ? acc : acc[k]), obj);
+  }
+  
+  if (!byField) {
+    const data = [];
+    rows.forEach(row => {
+      const x = getByPath(row, xField);
+      const y = Number(getByPath(row, yField));
+      if (x != null && !isNaN(y)) data.push({ x: String(x), y });
+    });
+    return { datasets: [{ label: `${yField} by ${xField}`, data }] };
+  } else {
+    const seriesMap = new Map();
+    rows.forEach(row => {
+      const x = getByPath(row, xField);
+      const y = Number(getByPath(row, yField));
+      const by = getByPath(row, byField);
+      if (x != null && !isNaN(y) && by != null) {
+        const series = String(by);
+        if (!seriesMap.has(series)) seriesMap.set(series, []);
+        seriesMap.get(series).push({ x: String(x), y });
+      }
+    });
+    const datasets = [];
+    seriesMap.forEach((data, series) => {
+      datasets.push({ label: series, data });
+    });
+    return { datasets };
+  }
+}
+</script>
+{% endblock %}

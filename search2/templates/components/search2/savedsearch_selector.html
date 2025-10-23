@@ -1,0 +1,9 @@
+<div class="mb-3">
+  <label for="savedsearch-selector" class="form-label">Load a Saved Search</label>
+  <select id="savedsearch-selector" class="form-select">
+    <option value="">-- Select a saved search --</option>
+    {% for ss in saved_searches %}
+      <option value="{{ ss.query }}">{{ ss.name }}</option>
+    {% endfor %}
+  </select>
+</div>

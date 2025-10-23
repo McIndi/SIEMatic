@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load crispy_forms_tags %}
+
+{% block title %}Search Dashboard{% endblock %}
+
+{% block head %}
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.dataTables.min.css">
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css">
+  <style>
+    .dataTables_length option {
+        color: #999999; /* White text for dark mode */
+        background-color: #000000; /* Dark background */
+        border-color: #6c757d; /* Lighter border for visibility */
+    }
+    select option:checked {
+      background-color: #444444; /* Lighter gray on hover/selection */
+    }
+    select option:focus {
+      background-color: #444444; /* Lighter gray on hover/selection */
+    }
+    select option:active {
+      background-color: #444444; /* Lighter gray on hover/selection */
+    }
+    select option:hover {
+      background-color: #444444; /* Lighter gray on hover/selection */
+    }
+  </style>
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="{% static 'search2/datatable.js' %}"></script>
+  <script src="{% static 'search2/visualization_selector.js' %}"></script>
+  <script src="{% static 'search2/savedsearch_selector.js' %}"></script>
+  <script src="{% static 'search2/command_help.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+  <div class="container-fluid px-3 px-lg-4">
+    <h5 class="display-4">Search</h5>
+
+    <!-- Row 1: form spans full width -->
+
+    <div class="row g-3">
+      <div class="col-12 mb-2">
+  {% include 'components/search2/savedsearch_selector.html' %}
+      </div>
+      <div class="col-12">
+  {% include 'components/search2/search_form.html' %}
+      </div>
+    </div>
+
+    <!-- Row 2: sidebar (left) + results (right) -->
+    <div class="row g-3 mt-1">
+      <!-- Dashboard Actions: Save Search, Create Dashboard, Add to Dashboard -->
+      <!-- Sidebar LEFT on xl, below results on mobile -->
+      {% if summary %}
+      <aside class="col-12 col-xl-3 order-2 order-xl-1 overflow-auto border rounded-3 p-3 ">
+        <div id="results-info" class="position-sticky" style="top:1rem;">
+          {% include 'components/search2/results_info.html' %}
+        </div>
+      </aside>
+      {% endif %}
+
+      <!-- Results RIGHT on xl, above sidebar on mobile -->
+      <div class="col-12 {% if summary %}col-xl-9{% else %}col-xl-12{% endif %} order-1 order-xl-2">
+        <section id="results-area" class="border rounded-3 p-3 p-lg-4 overflow-auto" style="min-height:60vh;">
+          <h4 class="mb-3">Results</h4>
+          {% include 'components/search2/visualization_selector.html' %}
+          {{ results | json_script:'search-results-json' }}
+        </section>
+      </div>
+    </div>
+  </div>
+{% endblock %}

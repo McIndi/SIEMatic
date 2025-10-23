@@ -1,0 +1,49 @@
+{% load crispy_forms_tags %}
+
+<form id="chart-form" class="chart-form">
+  <div class="mb-3">
+    <label for="xField" class="form-label">X Field*</label>
+    <select id="xField" name="xField" class="form-select" required>
+      <option value="" disabled selected>Select X field…</option>
+      {% for field in available_fields %}
+        <option value="{{ field }}">{{ field }}</option>
+      {% endfor %}
+    </select>
+    <div class="form-text">Choose a field from the results.</div>
+  </div>
+
+  <div class="mb-3">
+    <label for="yField" class="form-label">Y Field*</label>
+    <select id="yField" name="yField" class="form-select" required>
+      <option value="" disabled selected>Select Y field…</option>
+      {% for field in available_fields %}
+        <option value="{{ field }}">{{ field }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <select id="chartType" name="chartType" class="form-select" required>
+    <option value="line" selected>Line</option>
+    <option value="bar">Bar</option>
+    <option value="pie">Pie</option>
+    <option value="doughnut">Doughnut</option>
+    <option value="polarArea">Polar Area</option>
+  </select>
+
+  <div class="mb-3">
+    <label for="byField" class="form-label">Split series by (optional)</label>
+    <select id="byField" name="byField" class="form-select">
+      <option value="">(None)</option>
+      {% for field in available_fields %}
+        <option value="{{ field }}">{{ field }}</option>
+      {% endfor %}
+    </select>
+    <div class="form-text">Creates one line/bar per distinct value (e.g., per host).</div>
+  </div>
+
+  <button type="submit" class="btn btn-primary">Generate Chart</button>
+</form>
+
+<div class="mt-3" style="height: 420px;">
+  <canvas id="results-chart"></canvas>
+</div>

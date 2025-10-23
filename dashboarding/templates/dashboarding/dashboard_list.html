@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block head %}
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.dataTables.min.css">
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css">
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+  <script>
+    $(document).ready(function() {
+        $('#dashboards-table').DataTable({
+            responsive: true,
+            dom: 'Bfrtip',
+            layout: {
+              topLeft: {
+                buttons: ['copy', 'csv', 'excel', 'pdf', 'print']
+              }
+            },
+            order: [[3, 'desc']]  // Order by Created At descending
+        });
+    });
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="row mb-3">
+    <div class="col d-flex justify-content-between align-items-center">
+      <h2 class="mb-0">Dashboards</h2>
+      <a href="{% url 'dashboarding:dashboard_create' %}" class="btn btn-primary">Create Dashboard</a>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col">
+      <div class="table-responsive">
+        <table id="dashboards-table" class="table table-striped align-middle">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Description</th>
+              <th>Panels</th>
+              <th>Created At</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dashboard in dashboards %}
+            <tr>
+              <td><a href="{% url 'dashboarding:dashboard_detail' dashboard.pk %}">{{ dashboard.name }}</a></td>
+              <td>{{ dashboard.description|default:'-' }}</td>
+              <td>{{ dashboard.panels.count }}</td>
+              <td>{{ dashboard.created_at|date:"M d, Y H:i" }}</td>
+              <td>
+                <a href="{% url 'dashboarding:dashboard_edit' dashboard.pk %}" class="btn btn-sm btn-primary me-1">Edit</a>
+                <a href="{% url 'dashboarding:dashboard_delete' dashboard.pk %}" class="btn btn-sm btn-danger">Delete</a>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="text-center">No dashboards found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

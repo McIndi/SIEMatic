@@ -1,0 +1,18 @@
+<!-- Visualization Selector Component -->
+
+<div class="mb-2">
+  <label for="viz-select" class="form-label">Select Visualization:</label>
+  <select id="viz-select" class="form-select form-select-sm" style="max-width: 14rem;">
+      <option value="table" selected>Table</option>
+      <option value="chart">Chart</option>
+  </select>
+</div>
+
+<div id="viz-container">
+  <div id="table-viz">
+    {% include 'components/search2/datatable.html' %}
+  </div>
+  <div id="chart-viz" class="d-none">
+    {% include 'components/search2/chart.html' %}
+  </div>
+</div>

@@ -1,0 +1,95 @@
+version: '3.9'
+
+services:
+  db:
+    image: docker.io/library/postgres:latest
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:?Set DATABASE_NAME in .env}
+      POSTGRES_USER: ${DATABASE_USER:?Set DATABASE_USER in .env}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  web:
+    build: .
+    command: python manage.py serve
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: SIEMatic.settings.web
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      DATABASE_ENGINE: postgresql
+      DATABASE_NAME: ${DATABASE_NAME}
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  indexer:
+    build: .
+    command: python manage.py indexer
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: SIEMatic.settings.indexer
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      DATABASE_ENGINE: postgresql
+      DATABASE_NAME: ${DATABASE_NAME}
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  agent:
+    build: .
+    command: python manage.py agent
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: SIEMatic.settings.agent
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      INDEXER_USERNAME: ${INDEXER_USERNAME}
+      INDEXER_PASSWORD: ${INDEXER_PASSWORD}
+      DATABASE_ENGINE: postgresql
+      DATABASE_NAME: ${DATABASE_NAME}
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  crawler:
+    build: .
+    command: python manage.py run_crawlers
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: SIEMatic.settings.crawler
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      DATABASE_ENGINE: postgresql
+      DATABASE_NAME: ${DATABASE_NAME}
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

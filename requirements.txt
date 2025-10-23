@@ -1,0 +1,17 @@
+requests
+django
+whitenoise
+cherrypy
+crispy-bootstrap5
+djangorestframework
+markdown
+django-filter
+channels
+channels[daphne]
+websockets
+watchdog
+pandas
+django-pandas
+psutil
+croniter
+pywin32 ; sys_platform == 'win32'

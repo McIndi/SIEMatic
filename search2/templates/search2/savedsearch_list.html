@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% load static %}
+
+{% block title %}Saved Searches{% endblock %}
+
+{% block head %}
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.dataTables.min.css">
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap5.min.css">
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+  <script>
+    $(document).ready(function() {
+        $('#saved-searches-table').DataTable({
+            responsive: true,
+            dom: 'Bfrtip',
+            layout: {
+              topLeft: {
+                buttons: ['copy', 'csv', 'excel', 'pdf', 'print']
+              }
+            },
+            order: [[2, 'desc']]  // Order by Created At descending
+        });
+    });
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Saved Searches</h1>
+    <a href="{% url 'savedsearch_create' %}" class="btn btn-primary">Create New Saved Search</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-striped table-hover" id="saved-searches-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Query</th>
+          <th>Created At</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for search in searches %}
+          <tr>
+            <td><a href="{% url 'savedsearch_update' search.pk %}">{{ search.name }}</a></td>
+            <td><code>{{ search.query }}</code></td>
+            <td>{{ search.created_at|date:"Y-m-d H:i" }}</td>
+            <td>
+              <a href="{% url 'savedsearch_update' search.pk %}" class="btn btn-sm btn-primary me-2">Edit</a>
+              <a href="{% url 'savedsearch_delete' search.pk %}" class="btn btn-sm btn-danger">Delete</a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center text-muted">No saved searches.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

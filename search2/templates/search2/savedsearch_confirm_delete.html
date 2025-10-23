@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+      <div class="card border-danger">
+        <div class="card-header bg-danger text-white">
+          <h2 class="mb-0" style="font-size:1.5rem;">Delete Saved Search</h2>
+        </div>
+        <div class="card-body">
+          <p>Are you sure you want to delete <strong>"{{ object.name }}"</strong>?</p>
+          <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">Yes, delete</button>
+            <a href="{% url 'savedsearch_list' %}" class="btn btn-secondary">Cancel</a>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

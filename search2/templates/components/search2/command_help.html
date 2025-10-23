@@ -1,0 +1,51 @@
+{% load static %}
+<div class="card mb-3">
+  <div class="card-header" id="commandHelpHeader" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#commandHelpCollapse" aria-expanded="false" aria-controls="commandHelpCollapse">
+    <span class="fw-bold">Search Command Help</span>
+    <span id="commandHelpChevron" class="float-end" style="font-size:1.2em;">&#9660;</span>
+  </div>
+
+  <div class="collapse" id="commandHelpCollapse">
+    <div class="card-body">
+      <table id="commandHelpTable" class="table table-striped table-bordered">
+        <thead>
+          <tr>
+            <th>Command</th>
+            <th>Description</th>
+            <th>Arguments</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in help_rows %}
+          <tr>
+            <td><strong>{{ row.command }}</strong></td>
+            <td><pre>{{ row.description|default:"" }}</pre></td>
+            <td>
+              <table class="table table-sm mb-0">
+                <thead>
+                  <tr>
+                    <th>Flag</th>
+                    <th>Type</th>
+                    <th>Default</th>
+                    <th>Help</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for arg in row.arguments %}
+                  <tr>
+                    <td><pre>{{ arg.flag }}</pre></td>
+                    <td><pre>{{ arg.type }}</pre></td>
+                    <td><pre>{{ arg.default }}</pre></td>
+                    <td><pre>{{ arg.help }}</pre></td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>

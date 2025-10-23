@@ -1,0 +1,74 @@
+<!-- Results Info Component -->
+<div class="results">
+  <h5 class="mb-3">Results Summary</h5>
+  
+  {% if summary.total_rows > 0 %}
+    <!-- Overall Stats -->
+    <div class="mb-3">
+      <h6 class="mb-2">Overview</h6>
+      <ul class="list-unstyled small mb-0">
+        <li><strong>Total Rows:</strong> {{ summary.total_rows|floatformat:0 }}</li>
+        <li><strong>Total Columns:</strong> {{ summary.total_columns }}</li>
+      </ul>
+    </div>
+
+    <!-- Column Statistics -->
+    {% if summary.columns %}
+      <div class="mb-3">
+        <h6 class="mb-2">Column Statistics</h6>
+        <div class="accordion accordion-flush" id="columnAccordion">
+          {% for column_name, stats in summary.columns.items %}
+            <div class="accordion-item border-0">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed py-2 px-0 bg-transparent border-0 shadow-none small" 
+                        type="button" 
+                        data-bs-toggle="collapse" 
+                        data-bs-target="#collapse{{ forloop.counter }}" 
+                        aria-expanded="false">
+                  <strong>{{ column_name }}</strong> 
+                  <span class="badge bg-secondary ms-2">{{ stats.type }}</span>
+                </button>
+              </h2>
+              <div id="collapse{{ forloop.counter }}" 
+                   class="accordion-collapse collapse" 
+                   data-bs-parent="#columnAccordion">
+                <div class="accordion-body px-0 pt-0 pb-2">
+                  <ul class="list-unstyled small mb-0">
+                    <li><strong>Non-null:</strong> {{ stats.non_null_count }}</li>
+                    <li><strong>Null:</strong> {{ stats.null_count }}</li>
+                    <li><strong>Unique:</strong> {{ stats.unique_count }}</li>
+                    {% if stats.type == 'numeric' %}
+                      <li class="mt-1"><strong>Min:</strong> {{ stats.min|floatformat:2 }}</li>
+                      <li><strong>Max:</strong> {{ stats.max|floatformat:2 }}</li>
+                      <li><strong>Mean:</strong> {{ stats.mean|floatformat:2 }}</li>
+                      <li><strong>Median:</strong> {{ stats.median|floatformat:2 }}</li>
+                      {% if stats.mode is not None %}
+                        <li><strong>Mode:</strong> {{ stats.mode|floatformat:2 }}</li>
+                      {% endif %}
+                      <li><strong>Std Dev:</strong> {{ stats.std_dev|floatformat:2 }}</li>
+                    {% elif stats.type == 'datetime' %}
+                      <li class="mt-1"><strong>Earliest:</strong> {{ stats.min_date|date:"Y-m-d H:i" }}</li>
+                      <li><strong>Latest:</strong> {{ stats.max_date|date:"Y-m-d H:i" }}</li>
+                    {% elif stats.type == 'text' %}
+                      <li class="mt-1"><strong>Avg Length:</strong> {{ stats.avg_length|floatformat:1 }}</li>
+                      {% if stats.most_common %}
+                        <li><strong>Most Common:</strong></li>
+                        <ul class="list-unstyled ms-3">
+                          {% for value, count in stats.most_common %}
+                            <li class="small text-muted">{{ value|truncatechars:30 }} ({{ count }})</li>
+                          {% endfor %}
+                        </ul>
+                      {% endif %}
+                    {% endif %}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  {% else %}
+    <p class="mb-0 text-muted">No results to analyze.</p>
+  {% endif %}
+</div>

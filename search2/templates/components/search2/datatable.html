@@ -1,0 +1,13 @@
+<!-- Datatables.net Table Component -->
+<table id="search-results-table" class="display dark" style="width:100%"  data-bs-theme="{{ user.userprofile.theme_preference|default:'light' }}" >
+    <thead>
+        <tr>
+            {% for field in results.0.keys %}
+                <th>{{ field }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+    </tbody>
+</table>
+<!-- DataTable initialization is handled in datatable.js -->

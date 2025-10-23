@@ -1,0 +1,24 @@
+# Python-related
+*.pyc
+__pycache__/
+
+# Virtual environment
+venv/
+.venv/
+
+# Django-related
+*.sqlite3
+media/
+staticfiles/
+sent_emails/
+
+# Logs
+logs/
+*.log
+
+.vscode/
+.github/
+
+build/
+dist/
+*.egg-info/

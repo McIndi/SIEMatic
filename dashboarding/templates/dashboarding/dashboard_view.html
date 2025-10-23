@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block head %}
+  <link rel="stylesheet" href="https://cdn.datatables.net/2.3.4/css/dataTables.dataTables.min.css">
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.datatables.net/2.3.4/js/dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+  <script>
+    // Initialize DataTables
+    document.addEventListener("DOMContentLoaded", function () {
+      var tables = document.querySelectorAll(".search-results-table");
+      tables.forEach(function(table) {
+        if (table && window.jQuery && window.jQuery.fn.dataTable) {
+          if (!window.jQuery(table).hasClass('dataTable')) {
+            window.jQuery(table).DataTable({
+              pageLength: 25,
+              order: [],
+              responsive: true,
+              layout: {
+                topLeft: {
+                  buttons: ['copy', 'csv', 'excel', 'pdf', 'print']
+                }
+              }
+            });
+          }
+        }
+      });
+    });
+
+    // Initialize Charts
+    document.addEventListener("DOMContentLoaded", function () {
+      const canvases = document.querySelectorAll('canvas[id^="chart-"]');
+      canvases.forEach(function(canvas) {
+        const ctx = canvas.getContext('2d');
+        const xField = canvas.dataset.xField;
+        const yField = canvas.dataset.yField;
+        const byField = canvas.dataset.byField;
+        const chartType = canvas.dataset.chartType || 'line';
+        const panelId = canvas.id.replace('chart-', '');
+        const jsonEl = document.getElementById(panelId);
+        if (!jsonEl) return;
+        const rows = JSON.parse(jsonEl.textContent || '[]');
+        if (!rows.length) return;
+
+        function getByPath(obj, path) {
+          if (!obj || !path) return undefined;
+          return path.split('__').reduce((acc, k) => (acc == null ? acc : acc[k]), obj);
+        }
+
+        function formatLabel(v) {
+          if (v == null) return '';
+          const s = String(v);
+          const d = new Date(s);
+          if (!isNaN(d.getTime())) {
+            return d.toISOString().slice(0, 19).replace('T', ' ');
+          }
+          return s;
+        }
+
+        const data = [];
+        const seriesMap = new Map();
+        for (const row of rows) {
+          const xValue = getByPath(row, xField);
+          const yValue = getByPath(row, yField);
+          const byValue = byField ? getByPath(row, byField) : null;
+          if (xValue == null || yValue == null) continue;
+          const x = formatLabel(xValue);
+          const y = Number(yValue);
+          if (x === '' || !Number.isFinite(y)) continue;
+          if (byField) {
+            const series = String(byValue || 'default');
+            if (!seriesMap.has(series)) seriesMap.set(series, []);
+            seriesMap.get(series).push({ x, y });
+          } else {
+            data.push({ x, y });
+          }
+        }
+
+        const datasets = [];
+        if (byField) {
+          for (const [series, points] of seriesMap.entries()) {
+            datasets.push({
+              label: series,
+              data: points,
+              showLine: chartType === 'line',
+              tension: 0.1,
+              fill: false,
+              pointRadius: 3
+            });
+          }
+        } else {
+          datasets.push({
+            label: `${yField} by ${xField}`,
+            data: data,
+            showLine: chartType === 'line',
+            tension: 0.1,
+            fill: false,
+            pointRadius: 3
+          });
+        }
+
+        new Chart(ctx, {
+          type: chartType,
+          data: { datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { type: 'category' },
+              y: { beginAtZero: true }
+            }
+          }
+        });
+      });
+    });
+  </script>
+{% endblock %}
+
+{% block content %}
+<h1>{{ dashboard.name }}</h1>
+<p>{{ dashboard.description }}</p>
+
+<form method="post">
+    {% csrf_token %}
+    {{ params_form|crispy }}
+    <button type="submit" class="btn btn-primary">Run Searches</button>
+</form>
+
+{% if panel_data %}
+    {% for item in panel_data %}
+        <div class="card mb-4">
+            <div class="card-header text-center">
+                <h5 class="mb-0">{{ item.panel.title }}</h5>
+            </div>
+            <div class="card-body">
+                {% if item.error %}
+                    <p class="text-danger">Error: {{ item.error }}</p>
+                {% else %}
+                    {% if item.panel.visualization_type == 'table' %}
+                        {% if item.data %}
+                            <table class="search-results-table display" style="width:100%">
+                                <thead>
+                                    <tr>
+                                        {% for field in item.data.0.keys %}
+                                            <th>{{ field }}</th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in item.data %}
+                                        <tr>
+                                            {% for field, value in row.items %}
+                                                <td data-field="{{ field }}">{{ value }}</td>
+                                            {% endfor %}
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        {% else %}
+                            <div class="alert alert-warning">No data available.</div>
+                        {% endif %}
+                    {% else %}
+                        {% if item.data and item.panel.x_field and item.panel.y_field %}
+                            {{ item.data|json_script:item.panel.id|stringformat:"s" }}
+                            <div class="mt-3" style="height: 420px;">
+                                <canvas id="chart-{{ item.panel.id }}"
+                                  data-x-field="{{ item.panel.x_field }}"
+                                  data-y-field="{{ item.panel.y_field }}"
+                                  data-by-field="{{ item.panel.by_field }}"
+                                  data-chart-type="{{ item.panel.chart_type }}"
+                                ></canvas>
+                            </div>
+                        {% elif not item.data %}
+                            <div class="alert alert-warning">No data available.</div>
+                        {% else %}
+                            <div class="alert alert-info">Select X and Y fields to display a chart.</div>
+                        {% endif %}
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    {% endfor %}
+{% endif %}
+{% endblock %}
