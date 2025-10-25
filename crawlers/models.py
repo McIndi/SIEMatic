@@ -22,5 +22,22 @@ class Finding(models.Model):
     def __str__(self):
         return f"{self.rule_name}: {self.description[:50]}"
 
+    @classmethod
+    def can_create_finding(cls, event, rule_name, cooldown_seconds=None):
+        """
+        Check if a finding can be created for the given event and rule within the cooldown period.
+        Returns True if no recent finding exists, False otherwise.
+        """
+        if cooldown_seconds is None:
+            return True
+        from django.utils import timezone
+        from datetime import timedelta
+        cooldown_since = timezone.now() - timedelta(seconds=cooldown_seconds)
+        return not cls.objects.filter(
+            event=event,
+            rule_name=rule_name,
+            created_at__gte=cooldown_since
+        ).exists()
+
     class Meta:
         ordering = ['-created_at']

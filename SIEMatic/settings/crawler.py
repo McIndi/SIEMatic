@@ -35,12 +35,13 @@ CRAWLER_CONFIGS = {
         'schedule': '*/1 * * * *',  # Every minute (cron syntax)
         'db_alias': 'default',
         'alerting_plugins': ['email_alert'],  # Send email alerts
+        'realert_cooldown': 60 * 5,  #  Cooldown period in seconds (one hour)
     },
     '30_day_retention_crawler': {
         'name': 'data_retention_crawler',
         'enabled': True,
         'type': 'scheduled',
-        'schedule': '*/5 * * * *',  # Every 5 minutes
+        'schedule': '0,5,10,15,20,25,30,35,40,45,50,55 * * * *',  # Every 5 minutes
         'retention_days': 30,
         'db_alias': 'default',
         'rules': [
@@ -55,7 +56,7 @@ CRAWLER_CONFIGS = {
         'name': 'data_retention_crawler',
         'enabled': True,
         'type': 'scheduled',
-        'schedule': '*/5 * * * *',  # Every 5 minutes
+        'schedule': '1,6,11,16,21,26,31,36,41,46,51,56 * * * *',  # Every 5 minutes
         'retention_days': 7,
         'db_alias': 'default',
         'rules': [
@@ -70,7 +71,7 @@ CRAWLER_CONFIGS = {
         'name': 'data_retention_crawler',
         'enabled': True,
         'type': 'scheduled',
-        'schedule': '*/5 * * * *',  # Every 5 minutes
+        'schedule': '2,7,12,17,22,27,32,37,42,47,52,57 * * * *',  # Every 5 minutes
         'retention_days': 3,
         'db_alias': 'default',
         'rules': [

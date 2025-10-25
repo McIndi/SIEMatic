@@ -38,9 +38,14 @@ class BaseCrawlerPlugin(ABC):
     def create_finding(self, event, rule_name, description, severity='medium', mitre_tactic=None, mitre_technique=None):
         """
         Create a finding for an event.
-        Note: Callers should check for duplicates based on config (e.g., realert_cooldown).
+        Checks for cooldown based on config before creating.
         """
         from crawlers.models import Finding
+        cooldown = self.config.get('realert_cooldown')
+        if not Finding.can_create_finding(event, rule_name, cooldown):
+            logger.debug("Skipping finding creation due to cooldown: %s for event %s", rule_name, event.id)
+            return None
+        
         finding = Finding.objects.create(
             event=event,
             rule_name=rule_name,
@@ -49,7 +54,7 @@ class BaseCrawlerPlugin(ABC):
             mitre_tactic=mitre_tactic,
             mitre_technique=mitre_technique,
         )
-        logger.info(f"Created finding: {finding}")
+        logger.info("Created finding: %s", finding)
         self.send_alerts(finding)
         return finding
 

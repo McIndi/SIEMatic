@@ -34,22 +34,13 @@ class FailedLoginCrawler(BaseCrawlerPlugin):
         since = timezone.now() - timedelta(seconds=interval * 1.5)
         # Query events with 'failed login' in data, created since then
         queryset = self.get_queryset().filter(data__icontains='failed login', created__gte=since)
-        cooldown = self.config.get('realert_cooldown')
         for event in queryset:
-            # Check if finding already exists for this event and rule within cooldown
-            from crawlers.models import Finding
-            query = Finding.objects.filter(event=event, rule_name=self.name)
-            if cooldown:
-                cooldown_since = timezone.now() - timedelta(seconds=cooldown)
-                query = query.filter(created__gte=cooldown_since)
-            if query.exists():
-                continue  # Skip re-alerting
             self.create_finding(
                 event=event,
                 rule_name=self.name,
-                description=f"Failed login detected in event data: {event.data[:100]}...",
+                description="Failed login detected in event data: %s..." % event.data[:100],
                 severity='medium',
                 mitre_tactic='Credential Access',
                 mitre_technique='Brute Force',
             )
-        logger.info(f"{self.name} crawler scan completed")
+        logger.info("%s crawler scan completed", self.name)
