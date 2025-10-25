@@ -14,10 +14,12 @@ DEFAULT_FROM_EMAIL = 'siematic@example.com'
 CRAWLER_PLUGINS = [
     'crawlers.plugins.failed_login_crawler.FailedLoginCrawler',
     'crawlers.plugins.always_finding_crawler.AlwaysFindingCrawler',
+    'crawlers.plugins.data_retention_crawler.DataRetentionCrawler',
 ]
 
 CRAWLER_CONFIGS = {
     'failed_login_crawler': {
+        'name': 'failed_login_crawler',
         'enabled': True,
         'type': 'daemon',  # 'daemon' or 'scheduled'
         'restart': True,   # True (infinite), False (none), or int (max attempts)
@@ -27,11 +29,57 @@ CRAWLER_CONFIGS = {
         'alerting_plugins': ['email_alert'],  # Alerting plugins to use for this crawler
     },
     'always_finding_crawler': {
+        'name': 'always_finding_crawler',
         'enabled': True,
         'type': 'scheduled',  # Run on schedule
         'schedule': '*/1 * * * *',  # Every minute (cron syntax)
         'db_alias': 'default',
         'alerting_plugins': ['email_alert'],  # Send email alerts
+    },
+    '30_day_retention_crawler': {
+        'name': 'data_retention_crawler',
+        'enabled': True,
+        'type': 'scheduled',
+        'schedule': '*/5 * * * *',  # Every 5 minutes
+        'retention_days': 30,
+        'db_alias': 'default',
+        'rules': [
+            {
+                'split_by': 'index',
+                'allow': ['default', 'sysmon', 'security'],
+                'deny': [],
+            },
+        ],
+    },
+    '7_day_retention_crawler': {
+        'name': 'data_retention_crawler',
+        'enabled': True,
+        'type': 'scheduled',
+        'schedule': '*/5 * * * *',  # Every 5 minutes
+        'retention_days': 7,
+        'db_alias': 'default',
+        'rules': [
+            {
+                'split_by': 'index',
+                'allow': ['windows_events', 'scheduled_tasks'],
+                'deny': [],
+            },
+        ],
+    },
+    '3_day_retention_crawler': {
+        'name': 'data_retention_crawler',
+        'enabled': True,
+        'type': 'scheduled',
+        'schedule': '*/5 * * * *',  # Every 5 minutes
+        'retention_days': 3,
+        'db_alias': 'default',
+        'rules': [
+            {
+                'split_by': 'index',
+                'allow': ['watchdog'],
+                'deny': [],
+            },
+        ],
     },
 }
 

@@ -25,7 +25,7 @@ def run_daemon_plugin(plugin_class, config):
     """
     django.setup()  # Initialize Django in child process
     plugin = plugin_class(config)
-    logger.info(f"Starting daemon plugin: {plugin.name}")
+    logger.info("Starting daemon plugin: %s", plugin.name)
     plugin.run()
 
 def run_scheduled_plugin(plugin_class, config):
@@ -34,7 +34,7 @@ def run_scheduled_plugin(plugin_class, config):
     """
     django.setup()  # Initialize Django in child process
     plugin = plugin_class(config)
-    logger.info(f"Running scheduled plugin: {plugin.name}")
+    logger.info("Running scheduled plugin: %s", plugin.name)
     plugin.run()
 
 class Command(BaseCommand):
@@ -58,57 +58,73 @@ class Command(BaseCommand):
         crawler_plugins = getattr(settings, 'CRAWLER_PLUGINS', [])
         crawler_configs = getattr(settings, 'CRAWLER_CONFIGS', {})
 
-        # Load plugin classes
-        plugins = {}
-        for plugin_path in crawler_plugins:
-            try:
-                module_path, class_name = plugin_path.rsplit('.', 1)
-                module = importlib.import_module(module_path)
-                plugin_class = getattr(module, class_name)
-                name = getattr(plugin_class, 'name', class_name.lower())
-                plugins[name] = plugin_class
-            except Exception as e:
-                logger.error(f"Failed to load plugin {plugin_path}: {e}")
+        # Load plugin classes dynamically from configs
+        plugins = {}  # plugin_name -> plugin_class
+        instances = {}  # instance_name -> (plugin_class, config)
+        
+        for instance_name, config in crawler_configs.items():
+            if not config.get('enabled', True):
+                continue
+            plugin_name = config.get('name', instance_name)  # Default to instance_name if no 'name'
+            if plugin_name not in plugins:
+                # Find the plugin path
+                plugin_path = None
+                for path in crawler_plugins:
+                    if plugin_name in path.lower():
+                        plugin_path = path
+                        break
+                if not plugin_path:
+                    # Try to construct path
+                    plugin_path = f'crawlers.plugins.{plugin_name}.{plugin_name.title().replace("_", "")}'
+                
+                try:
+                    module_path, class_name = plugin_path.rsplit('.', 1)
+                    module = importlib.import_module(module_path)
+                    plugin_class = getattr(module, class_name)
+                    plugins[plugin_name] = plugin_class
+                except Exception as e:
+                    logger.error("Failed to load plugin %s: %s", plugin_path, e)
+                    continue
+            
+            instances[instance_name] = (plugins[plugin_name], config)
 
         # Track processes and schedules
-        daemon_processes = {}  # name: {'process': proc, 'restart_count': 0}
+        daemon_processes = {}  # instance_name: {'process': proc, 'restart_count': 0}
         scheduled_last_runs = {}
         scheduled_next_runs = {}
 
         # Initialize schedules
-        for name, plugin_class in plugins.items():
-            config = crawler_configs.get(name, {})
+        for instance_name, (plugin_class, config) in instances.items():
             plugin_type = config.get('type', 'scheduled')
             if plugin_type == 'scheduled':
                 schedule = config.get('schedule')
                 if schedule and croniter:
                     cron = croniter(schedule, datetime.now())
-                    scheduled_next_runs[name] = cron.get_next(datetime)
-                    scheduled_last_runs[name] = None
+                    scheduled_next_runs[instance_name] = cron.get_next(datetime)
+                    scheduled_last_runs[instance_name] = None
                 else:
                     # Default to every 5 minutes if no cron
-                    scheduled_next_runs[name] = datetime.now()
-                    scheduled_last_runs[name] = None
+                    scheduled_next_runs[instance_name] = datetime.now()
+                    scheduled_last_runs[instance_name] = None
 
         logger.info("Starting crawler service")
         try:
             while True:
                 # Start/monitor daemon plugins
-                for name, plugin_class in plugins.items():
-                    config = crawler_configs.get(name, {})
+                for instance_name, (plugin_class, config) in instances.items():
                     plugin_type = config.get('type', 'scheduled')
                     if plugin_type == 'daemon':
                         restart = config.get('restart', False)
                         max_restarts = float('inf') if restart is True else (restart if isinstance(restart, int) else 0)
                         
-                        if name not in daemon_processes:
+                        if instance_name not in daemon_processes:
                             # Start new
                             proc = multiprocessing.Process(target=run_daemon_plugin, args=(plugin_class, config))
                             proc.start()
-                            daemon_processes[name] = {'process': proc, 'restart_count': 0}
-                            logger.info(f"Started daemon process for {name}")
+                            daemon_processes[instance_name] = {'process': proc, 'restart_count': 0}
+                            logger.info("Started daemon process for %s", instance_name)
                         else:
-                            proc_info = daemon_processes[name]
+                            proc_info = daemon_processes[instance_name]
                             if not proc_info['process'].is_alive():
                                 if proc_info['restart_count'] < max_restarts:
                                     # Restart
@@ -116,33 +132,32 @@ class Command(BaseCommand):
                                     proc.start()
                                     proc_info['process'] = proc
                                     proc_info['restart_count'] += 1
-                                    logger.info(f"Restarted daemon process for {name} (attempt {proc_info['restart_count']})")
+                                    logger.info("Restarted daemon process for %s (attempt %s)", instance_name, proc_info['restart_count'])
                                 else:
-                                    logger.warning(f"Daemon process for {name} died, restart limit reached ({max_restarts})")
-                                    del daemon_processes[name]
+                                    logger.warning("Daemon process for %s died, restart limit reached (%s)", instance_name, max_restarts)
+                                    del daemon_processes[instance_name]
 
                 # Check scheduled plugins
                 now = datetime.now()
-                for name, plugin_class in plugins.items():
-                    config = crawler_configs.get(name, {})
+                for instance_name, (plugin_class, config) in instances.items():
                     plugin_type = config.get('type', 'scheduled')
                     if plugin_type == 'scheduled':
-                        next_run = scheduled_next_runs.get(name)
+                        next_run = scheduled_next_runs.get(instance_name)
                         if next_run and now >= next_run:
                             # Spawn process for scheduled run
                             proc = multiprocessing.Process(target=run_scheduled_plugin, args=(plugin_class, config))
                             proc.start()
-                            scheduled_last_runs[name] = now
+                            scheduled_last_runs[instance_name] = now
                             # Update next run
                             schedule = config.get('schedule')
                             if schedule and croniter:
                                 cron = croniter(schedule, now)
-                                scheduled_next_runs[name] = cron.get_next(datetime)
+                                scheduled_next_runs[instance_name] = cron.get_next(datetime)
                             else:
                                 # Default interval
                                 interval = config.get('interval', 300)  # 5 minutes
-                                scheduled_next_runs[name] = now + timedelta(seconds=interval)
-                            logger.info(f"Scheduled run for {name} at {now}")
+                                scheduled_next_runs[instance_name] = now + timedelta(seconds=interval)
+                            logger.info("Scheduled run for %s at %s", instance_name, now)
 
                 time.sleep(10)  # Check every 10 seconds
 
@@ -155,27 +170,34 @@ class Command(BaseCommand):
                     proc.join()
             self.stdout.write("Service stopped")
 
-    def run_single_plugin(self, plugin_name):
+    def run_single_plugin(self, instance_name):
         crawler_plugins = getattr(settings, 'CRAWLER_PLUGINS', [])
         crawler_configs = getattr(settings, 'CRAWLER_CONFIGS', {})
 
-        # Load plugin classes
-        plugins = {}
-        for plugin_path in crawler_plugins:
-            try:
-                module_path, class_name = plugin_path.rsplit('.', 1)
-                module = importlib.import_module(module_path)
-                plugin_class = getattr(module, class_name)
-                name = getattr(plugin_class, 'name', class_name.lower())
-                plugins[name] = plugin_class
-            except Exception as e:
-                logger.error(f"Failed to load plugin {plugin_path}: {e}")
-
-        if plugin_name not in plugins:
-            self.stderr.write(f"Unknown plugin: {plugin_name}")
+        if instance_name not in crawler_configs:
+            self.stderr.write("Unknown instance: %s" % instance_name)
             return
-        plugin_class = plugins[plugin_name]
-        config = crawler_configs.get(plugin_name, {})
+        
+        config = crawler_configs[instance_name]
+        plugin_name = config.get('name', instance_name)
+        
+        # Load the plugin class
+        plugin_path = None
+        for path in crawler_plugins:
+            if plugin_name in path.lower():
+                plugin_path = path
+                break
+        if not plugin_path:
+            plugin_path = 'crawlers.plugins.%s.%s' % (plugin_name, plugin_name.title().replace('_', ''))
+        
+        try:
+            module_path, class_name = plugin_path.rsplit('.', 1)
+            module = importlib.import_module(module_path)
+            plugin_class = getattr(module, class_name)
+        except Exception as e:
+            self.stderr.write("Failed to load plugin %s: %s" % (plugin_path, e))
+            return
+        
         plugin = plugin_class(config)
         plugin.run()
-        self.stdout.write(f"Ran plugin: {plugin_name}")
+        self.stdout.write("Ran instance: %s" % instance_name)

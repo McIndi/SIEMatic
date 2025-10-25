@@ -7,7 +7,7 @@ SIEMatic is a fair-sourced observability platform built with Django, designed fo
 - **Event Collection:** Pluggable agent system for collecting events from files, directories, and other sources.
 - **Indexing:** Asynchronous indexer for storing and managing event data.
 - **Search:** Powerful, settings-driven search language supporting QuerySet pipelines, filtering, grouping, and annotation while enforcing permissions.
-- **Crawlers:** Plugin-based analytics for continuous monitoring and alerting with findings and MITRE ATT&CK integration.
+- **Crawlers:** Plugin-based analytics for continuous monitoring, alerting, and automated data retention with findings and MITRE ATT&CK integration. Supports multiple concurrent instances with flexible scheduling.
 - **User Management:** Custom user model and profile with theme preferences.
 - **REST API:** Extensible endpoints for event ingestion and querying.
 - **Modern UI:** Responsive templates with Bootstrap, user authentication, and profile management.
@@ -31,10 +31,11 @@ SIEMatic is a fair-sourced observability platform built with Django, designed fo
 |                                | Template Tags                  | 🔴 Dropped                | Replaced by Components     | Former Chart/Table tags deprecated                                           |
 | **Agents & Indexers**          | Agent Framework                | ✅ Implemented             | WebSocket (TLS)            | Authenticated communication between agent/indexer                            |
 |                                | WorkerNode Tracking            | 🔴 Not Implemented        | Django model               | To track UUID, hostname, first_seen, last_seen                               |
-| **Crawlers / Analytics**       | Crawler Framework              | ✅ Implemented             | Django + Multiprocessing   | Plugin-based daemon/scheduled analytics with restart & cooldown             |
-|                                | MITRE ATT&CK Integration       | 🟡 Planned                | Django model / JSON import | Maps findings to tactics/techniques                                          |
-|                                | Findings / Alerts              | ✅ Implemented             | Django model               | Generates alerts with configurable re-alert cooldown                         |
-|                                | Notification Hooks             | 🔴 Future                 | Slack/email/Webhook        | Trigger on new high-severity findings                                        |
+| **Crawlers / Analytics**       | Crawler Framework              | ✅ Implemented             | Django + Multiprocessing   | Plugin-based daemon/scheduled analytics with restart & cooldown; supports continuous and cron-based runs; multiple instances per plugin |
+|                                | MITRE ATT&CK Integration       | ✅ Implemented             | Django model / JSON import | Maps findings to tactics/techniques in plugins and models; dataset import planned |
+|                                | Findings / Alerts              | ✅ Implemented             | Django model               | Generates alerts with configurable re-alert cooldown and severity levels |
+|                                | Notification Hooks             | ✅ Implemented             | Email backend              | Email alerting for findings; extensible plugin system for other hooks |
+|                                | Data Retention                 | ✅ Implemented             | Scheduled crawler          | Automated deletion of old events with configurable retention periods and field-based filtering |
 | **Security & Access**          | Auth & RBAC                    | ✅ Implemented             | Django auth                | Native Django users/groups/permissions                                       |
 |                                | Django Guardian Integration    | 🔴 Not Implemented        | Optional plugin            | Will allow row-level object permissions                                      |
 |                                | API Authentication             | ✅ Implemented             | DRF token/session          | Uses Django REST framework                                                   |
@@ -57,9 +58,9 @@ Goal: Deliver self-contained, end-to-end SIEMatic that can ingest, search, visua
 
 1. ✅ Finalize **search command library**
 2. ✅ Implement **crawler system**
-
-   * Continuous + scheduled runs
-   * Findings + MITRE mapping
+   - ✅ Continuous + scheduled runs (daemon and cron-based)
+   - ✅ Findings + MITRE mapping (with tactics/techniques in findings)
+   - ✅ Data retention policies (configurable per instance)
 3. 🔴 Implement **SavedSearch params/args**
 4. 🔴 Add **WorkerNode tracking model**
 5. 🟡 Enable **cross-database joins** via Pandas
@@ -73,12 +74,12 @@ Goal: Deliver self-contained, end-to-end SIEMatic that can ingest, search, visua
 
 Goal: Improve analysis depth, reliability, and extensibility.
 
-1. 🟡 Add **MITRE ATT&CK dataset** import + mapping UI
-2. 🔴 Add **Notifications** (webhook/email)
+1. 🟡 Add **MITRE ATT&CK dataset** import + mapping UI (basic mapping implemented in findings)
+2. ✅ Add **Notifications** (email alerting implemented)
 3. 🔴 Optional **Django Guardian integration**
 4. 🟡 Refine **RBAC enforcement** at search-command layer
 5. 🟡 Implement **dashboard export/import versioning**
-6. 🟡 Implement **crawler scheduling and management command**
+6. 🟡 Implement **crawler scheduling and management command** (run_crawlers command implemented)
 7. 🔴 Start **unit tests + coverage suite**
 
 ---
@@ -169,7 +170,7 @@ Goal: Prep for public and commercial adoption.
    # Or on Mac/Linux: export DJANGO_SETTINGS_MODULE=SIEMatic.settings.crawler
    python manage.py run_crawlers
    ```
-   Starts the crawler service for analytics and alerting.
+   Starts the crawler service for analytics, alerting, and automated data retention. Supports multiple concurrent crawler instances with different configurations.
 
 ## Deployment Options
 
