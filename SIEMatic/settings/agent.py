@@ -31,7 +31,7 @@ AGENT = {
             'index': 'watchdog',
             'host': socket.gethostname(),
             'source': 'watchdog',
-            'sourcetype': 'fschange',
+            'sourcetype': 'json',
         },
         {
             'name': 'sysmon',
@@ -60,8 +60,8 @@ AGENT = {
 }
 
 INDEXER = {
-    'host': 'localhost',
-    'port': 5001,
+    'host': os.getenv('INDEXER_HOSTNAME'),
+    'port': os.getenv('INDEXER_PORT'),
 }
 
 # Add Windows Event Log plugin if on Windows

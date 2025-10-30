@@ -1,18 +1,20 @@
 version: '3.9'
 
 services:
-  db:
+  siematic-db:
     image: docker.io/library/postgres:latest
     environment:
       POSTGRES_DB: ${DATABASE_NAME:?Set DATABASE_NAME in .env}
       POSTGRES_USER: ${DATABASE_USER:?Set DATABASE_USER in .env}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     restart: unless-stopped
 
-  web:
+
+  siematic-web:
     build: .
+    # bind to 0.0.0.0 so the host can reach the web server through the container port mapping
     command: python manage.py serve
     env_file:
       - .env
@@ -20,19 +22,23 @@ services:
       DJANGO_SETTINGS_MODULE: SIEMatic.settings.web
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
-      DATABASE_ENGINE: postgresql
+      DATABASE_ENGINE: ${DATABASE_ENGINE}
       DATABASE_NAME: ${DATABASE_NAME}
       DATABASE_USER: ${DATABASE_USER}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
-      DATABASE_HOST: db
-      DATABASE_PORT: 5432
+      DATABASE_HOST: ${DATABASE_HOST}
+      DATABASE_PORT: ${DATABASE_PORT}
+      CHERRYPY_PORT: ${CHERRYPY_PORT}
+      CHERRYPY_HOST: ${CHERRYPY_HOST}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+
     depends_on:
-      - db
+      - siematic-db
     ports:
       - "8000:8000"
     restart: unless-stopped
 
-  indexer:
+  siematic-indexer:
     build: .
     command: python manage.py indexer
     env_file:
@@ -41,17 +47,17 @@ services:
       DJANGO_SETTINGS_MODULE: SIEMatic.settings.indexer
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
-      DATABASE_ENGINE: postgresql
+      DATABASE_ENGINE: ${DATABASE_ENGINE}
       DATABASE_NAME: ${DATABASE_NAME}
       DATABASE_USER: ${DATABASE_USER}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
-      DATABASE_HOST: db
-      DATABASE_PORT: 5432
+      DATABASE_HOST: ${DATABASE_HOST}
+      DATABASE_PORT: ${DATABASE_PORT}
     depends_on:
-      - db
+      - siematic-db
     restart: unless-stopped
 
-  agent:
+  siematic-agent:
     build: .
     command: python manage.py agent
     env_file:
@@ -62,17 +68,17 @@ services:
       DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
       INDEXER_USERNAME: ${INDEXER_USERNAME}
       INDEXER_PASSWORD: ${INDEXER_PASSWORD}
-      DATABASE_ENGINE: postgresql
+      DATABASE_ENGINE: ${DATABASE_ENGINE}
       DATABASE_NAME: ${DATABASE_NAME}
       DATABASE_USER: ${DATABASE_USER}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
-      DATABASE_HOST: db
-      DATABASE_PORT: 5432
+      DATABASE_HOST: ${DATABASE_HOST}
+      DATABASE_PORT: ${DATABASE_PORT}
     depends_on:
-      - db
+      - siematic-db
     restart: unless-stopped
 
-  crawler:
+  siematic-crawler:
     build: .
     command: python manage.py run_crawlers
     env_file:
@@ -81,14 +87,14 @@ services:
       DJANGO_SETTINGS_MODULE: SIEMatic.settings.crawler
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
-      DATABASE_ENGINE: postgresql
+      DATABASE_ENGINE: ${DATABASE_ENGINE}
       DATABASE_NAME: ${DATABASE_NAME}
       DATABASE_USER: ${DATABASE_USER}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
-      DATABASE_HOST: db
-      DATABASE_PORT: 5432
+      DATABASE_HOST: ${DATABASE_HOST}
+      DATABASE_PORT: ${DATABASE_PORT}
     depends_on:
-      - db
+      - siematic-db
     restart: unless-stopped
 
 volumes:

@@ -33,10 +33,11 @@ SECRET_KEY = 'CHANGE_ME_TO_A_RANDOM_DEFAULT_SECRET_KEY'    # Secret key is set b
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', SECRET_KEY)
 # DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ['true', '1', 'yes']
 DEBUG = False
-ALLOWED_HOSTS = [
-    'localhost',
-    '127.0.0.1',
-]
+ALLOWED_HOSTS = os.environ.get(
+    'DJANGO_ALLOWED_HOSTS',
+    'localhost,127.0.0.1,::1'
+).split(',')
+
 INTERNAL_IPS = [
     '127.0.0.1',
 ]
@@ -216,7 +217,7 @@ LOGGING = {
         'file': {
             'level': LOG_LEVEL,
             'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / f'{sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else sys.argv[0]}-{os.getpid()}-{threading.get_ident()}.log',
+            'filename': BASE_DIR / 'logs' / f'{sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else sys.argv[0]}.log',
             'formatter': 'verbose',
         },
     },
