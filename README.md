@@ -192,13 +192,16 @@ This will build the images and start the web server, indexer, agent, crawler, an
 
 #### Run Database Migrations (required after first start)
 ```bash
-docker-compose exec web python manage.py migrate
+docker-compose exec siematic-web python manage.py migrate
 ```
 
 #### Create a Superuser (for admin access)
 ```bash
-docker-compose exec web python manage.py createsuperuser
+docker-compose exec siematic-web python manage.py createsuperuser
 ```
+
+#### Create a user (for the agent)
+log into the admin page at `/admin/users/` and add a user. Default permissions will be created for the user. 
 
 #### View Logs for All Services
 ```bash
@@ -216,6 +219,69 @@ docker-compose down
 ```
 
 Visit http://127.0.0.1:8000/ in your browser to access the web UI.
+
+## Troubleshooting web access (local containers)
+
+With the compose mapping `8000:8000` the web UI should be reachable at http://localhost:8000/ from the host running the containers. If you see a connection reset, refused, or a blank page, the commands below help narrow the problem down.
+
+Basic checks
+
+```bash
+# Are the compose services up?
+podman compose ps
+
+# See running containers and find the web container name (e.g. siematic_siematic-web_1)
+podman ps -a | grep -i siematic
+
+# Tail the web logs (show startup errors, DB errors, import failures)
+podman compose logs -f siematic-web
+# or if you prefer the container name:
+podman logs -f <container-name>
+
+# Confirm the container exposes port 8000 on the host
+podman port <container-name> 8000
+
+# Quick HTTP check from the host
+curl -v http://localhost:8000/
+```
+
+Django-specific checks (run inside the web container)
+
+```bash
+# Run Django system checks
+podman compose exec siematic-web python manage.py check
+
+# Run the test suite (helpful to reveal import/db/runtime issues)
+podman compose exec siematic-web python manage.py test
+
+# Confirm a process is listening on 8000 inside the container
+podman compose exec siematic-web ss -lntp | grep -E ':8000\b|:8000\s'
+
+# For interactive debugging, start the dev server binding 0.0.0.0:8000
+# (useful if the packaged serve command isn't exposing the right interface)
+podman compose exec -u root siematic-web python manage.py runserver 0.0.0.0:8000
+```
+
+Firewall / host network checks
+
+```bash
+# Does the host have a firewall blocking the port?
+sudo ss -lntp | grep 8000 || true
+sudo iptables -L -n | grep 8000 || true
+# If using firewalld:
+sudo firewall-cmd --list-all || true
+```
+
+Notes & tips
+
+- If `podman compose logs` shows ImportError or lib-related errors, inspect the web container's image build output — a missing system library or a failed wheel build will surface there.
+- If the container is running but `podman port` shows no mapping, ensure `ports:` is set in `docker-compose.yaml` and that you started compose with the same project name (some tools include the directory name in container names).
+- When using a remote VM, replace `localhost` with the VM's IP or use an SSH tunnel:
+
+```bash
+ssh -L 8000:localhost:8000 user@remote-host
+# then open http://localhost:8000 on your laptop
+```
 
 ### Advanced: Automated Build & Packaging For Air-Gapped Systems
 
