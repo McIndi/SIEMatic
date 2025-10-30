@@ -13,7 +13,14 @@ class CustomUser(AbstractUser):
 
     Currently uses default fields, but allows for future extensions.
     """
-    pass
+    class Meta:
+        permissions = [
+            ("view_event", "Can view events"),
+            ("view_dashboard", "Can view dashboards"),
+            ("view_panel", "Can view panels"),
+            ("view_finding","Can view findings"),
+            ("view_savedsearch", "Can view SavedSearches"),
+        ]
 
 
 class UserProfile(models.Model):
