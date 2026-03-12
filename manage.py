@@ -3,9 +3,6 @@
 import os
 import sys
 
-# Set default settings module if not already set
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'SIEMatic.settings.prod')
-
 def main():
     """Run administrative tasks."""
     try:
