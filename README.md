@@ -121,50 +121,64 @@ Goal: Prep for public and commercial adoption.
    pip install -r requirements.txt
    ```
 
-3. **Set up your database**
+3. **Configure settings**
+   ```bash
+   set DJANGO_SETTINGS_MODULE=SIEMatic.settings.web  # On Windows
+   # Or on Mac/Linux: export DJANGO_SETTINGS_MODULE=SIEMatic.settings.web
+   
+   # If you don't change the default logging settings, you will need to create a directory for logs:
+   mkdir logs
+   ```
+
+4. **Set up your database**
    ```bash
    python manage.py migrate
    ```
 
-4. **Create a superuser (admin account)**
+5. **Create a superuser (admin account)**
    ```bash
    python manage.py createsuperuser
    ```
 
-5. **Run the development server**
+6. **Run the development server**
    ```bash
-   set DJANGO_SETTINGS_MODULE=SIEMatic.settings.web  # On Windows
-   # Or on Mac/Linux: export DJANGO_SETTINGS_MODULE=SIEMatic.settings.web
+   # Collect static files
+   python manage.py collectstatic
    python manage.py runserver
    ```
 
-6. **Run the production server (CherryPy)**
+7. **Run the production server (CherryPy)**
    ```bash
-   set DJANGO_SETTINGS_MODULE=SIEMatic.settings.web  # On Windows
-   # Or on Mac/Linux: export DJANGO_SETTINGS_MODULE=SIEMatic.settings.web
    python manage.py serve
    ```
    You can configure CherryPy with environment variables (see below) or command-line arguments.
 
-7. **Run the Indexer**
+8. **Run the Indexer**
    ```bash
    set DJANGO_SETTINGS_MODULE=SIEMatic.settings.indexer  # On Windows
-   # Or on Mac/Linux: export DJANGO_SETTINGS_MODULE=SIEMatic.settings.indexer
+   set INDEXER_HOSTNAME=127.0.0.1
+   set INDEXER_PORT=7999
+   # On Mac/Linux: use export instead of set
    python manage.py indexer
    ```
    Starts the ASGI server (Daphne) for WebSocket event ingestion.
 
-8. **Run the Agent**
+10. **Create an Agent User**
+    Log into the admin page at `/admin/project/customuser/` and add a user.
+    Default permissions will be created for the user. This user will be used by the agent to authenticate with the indexer.
+9. **Run the Agent**
    ```bash
    set INDEXER_USERNAME=<Username>
    set INDEXER_PASSWORD=<Password>
+   set INDEXER_HOSTNAME=127.0.0.1
+   set INDEXER_PORT=7999
    set DJANGO_SETTINGS_MODULE=SIEMatic.settings.agent  # On Windows
    # Or on Mac/Linux: export DJANGO_SETTINGS_MODULE=SIEMatic.settings.agent
    python manage.py agent
    ```
    Starts the agent service for plugin management and heartbeat.
 
-9. **Run the Crawler**
+10. **Run the Crawler**
    ```bash
    set DJANGO_SETTINGS_MODULE=SIEMatic.settings.crawler  # On Windows
    # Or on Mac/Linux: export DJANGO_SETTINGS_MODULE=SIEMatic.settings.crawler
