@@ -242,18 +242,18 @@ Basic checks
 
 ```bash
 # Are the compose services up?
-podman compose ps
+docker compose ps
 
 # See running containers and find the web container name (e.g. siematic_siematic-web_1)
-podman ps -a | grep -i siematic
+docker ps -a | grep -i siematic
 
 # Tail the web logs (show startup errors, DB errors, import failures)
-podman compose logs -f siematic-web
+docker compose logs -f siematic-web
 # or if you prefer the container name:
-podman logs -f <container-name>
+docker logs -f <container-name>
 
 # Confirm the container exposes port 8000 on the host
-podman port <container-name> 8000
+docker port <container-name> 8000
 
 # Quick HTTP check from the host
 curl -v http://localhost:8000/
@@ -263,17 +263,17 @@ Django-specific checks (run inside the web container)
 
 ```bash
 # Run Django system checks
-podman compose exec siematic-web python manage.py check
+docker compose exec siematic-web python manage.py check
 
 # Run the test suite (helpful to reveal import/db/runtime issues)
-podman compose exec siematic-web python manage.py test
+docker compose exec siematic-web python manage.py test
 
 # Confirm a process is listening on 8000 inside the container
-podman compose exec siematic-web ss -lntp | grep -E ':8000\b|:8000\s'
+docker compose exec siematic-web ss -lntp | grep -E ':8000\b|:8000\s'
 
 # For interactive debugging, start the dev server binding 0.0.0.0:8000
 # (useful if the packaged serve command isn't exposing the right interface)
-podman compose exec -u root siematic-web python manage.py runserver 0.0.0.0:8000
+docker compose exec -u root siematic-web python manage.py runserver 0.0.0.0:8000
 ```
 
 Firewall / host network checks
@@ -288,8 +288,8 @@ sudo firewall-cmd --list-all || true
 
 Notes & tips
 
-- If `podman compose logs` shows ImportError or lib-related errors, inspect the web container's image build output — a missing system library or a failed wheel build will surface there.
-- If the container is running but `podman port` shows no mapping, ensure `ports:` is set in `docker-compose.yaml` and that you started compose with the same project name (some tools include the directory name in container names).
+- If `docker compose logs` shows ImportError or lib-related errors, inspect the web container's image build output — a missing system library or a failed wheel build will surface there.
+- If the container is running but `docker port` shows no mapping, ensure `ports:` is set in `docker-compose.yaml` and that you started compose with the same project name (some tools include the directory name in container names).
 - When using a remote VM, replace `localhost` with the VM's IP or use an SSH tunnel:
 
 ```bash
