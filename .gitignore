@@ -1,3 +1,5 @@
+.claude/
+
 # Python-related
 *.pyc
 __pycache__/
@@ -5,7 +7,7 @@ __pycache__/
 # Virtual environment
 venv/
 .venv/
-
+ 
 # Django-related
 *.sqlite3
 media/
