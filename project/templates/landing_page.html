@@ -9,7 +9,7 @@
         <h1 class="display-4 fw-bold mb-3">A Fair Sourced Observability Platform</h1>
         <p class="lead text-muted mb-4">SIEMatic collects, indexes, and analyzes security events across your infrastructure — giving you real-time visibility, powerful search, and automated threat detection without vendor lock-in.</p>
         {% if user.is_authenticated %}
-            <a href="{% url 'search2:dashboard' %}" class="btn btn-primary btn-lg me-2">Open Search</a>
+            <a href="{% url 'search2_dashboard' %}" class="btn btn-primary btn-lg me-2">Open Search</a>
             <a href="{% url 'dashboarding:dashboard_list' %}" class="btn btn-outline-secondary btn-lg">Dashboards</a>
         {% else %}
             <a href="{% url 'login' %}" class="btn btn-primary btn-lg me-2">Login</a>
