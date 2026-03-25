@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 import json
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 import socket
 import platform
 import sys
@@ -27,12 +28,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'CHANGE_ME_TO_A_RANDOM_DEFAULT_SECRET_KEY'    # Secret key is set below by environment variable DJANGO_SECRET_KEY
-
-# Environment variable support
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', SECRET_KEY)
-# DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ['true', '1', 'yes']
-DEBUG = False
+_secret_key = os.getenv('DJANGO_SECRET_KEY')
+if not _secret_key:
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY environment variable is not set. "
+        "Generate one with: python -c \"from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())\""
+    )
+SECRET_KEY = _secret_key
+DEBUG = os.getenv('DJANGO_DEBUG', 'False').lower() in ['true', '1', 'yes']
 ALLOWED_HOSTS = os.environ.get(
     'DJANGO_ALLOWED_HOSTS',
     'localhost,127.0.0.1,::1'
@@ -52,9 +55,12 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.admin',
+    'axes',
     'crispy_forms',
     'crispy_bootstrap5',
     'rest_framework',
+    'rest_framework.authtoken',
+    'drf_spectacular',
     'django_filters',
     'channels',
     'project',
@@ -66,10 +72,16 @@ INSTALLED_APPS = [
     'crawlers',
 ]
 
+AUTHENTICATION_BACKENDS = [
+    'axes.backends.AxesStandaloneBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'axes.middleware.AxesMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -248,14 +260,21 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.BasicAuthentication',
+        'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
         'rest_framework.filters.SearchFilter',
     ],
 }
+
+# django-axes: lock out after 5 failed login attempts for 1 hour
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = 1  # hours
+AXES_LOCKOUT_TEMPLATE = 'registration/lockout.html'
+AXES_RESET_ON_SUCCESS = True
 
 
 FIELD_EXTRACTIONS = {

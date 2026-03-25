@@ -10,6 +10,7 @@ from django.shortcuts import render, redirect
 from .forms import UserProfileForm
 from .models import UserProfile
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
 from .forms import CustomUserCreationForm
 
 logger = logging.getLogger(__name__)
@@ -75,4 +76,11 @@ def register(request):
         form = CustomUserCreationForm()
     return render(request, 'register.html', {'form': form})
 
-# Create your views here.
+@login_required
+@require_POST
+def toggle_theme(request):
+    """Toggle the user's theme preference between light and dark."""
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    profile.theme_preference = 'dark' if profile.theme_preference == 'light' else 'light'
+    profile.save(update_fields=['theme_preference'])
+    return redirect(request.META.get('HTTP_REFERER', '/'))

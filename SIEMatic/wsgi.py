@@ -10,7 +10,7 @@ https://docs.djangoproject.com/en/5.2/howto/deployment/wsgi/
 import os
 
 # Set default settings module if not already set
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'SIEMatic.settings.prod')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'SIEMatic.settings.web')
 
 from django.core.wsgi import get_wsgi_application
 

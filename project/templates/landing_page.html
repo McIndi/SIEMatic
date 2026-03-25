@@ -1,12 +1,59 @@
 {% extends 'base.html' %}
 
-{% block title %}Welcome{% endblock %}
+{% block title %}Welcome — SIEMatic{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-	<div class="col-md-8 text-center">
-		<h2 class="display-5 mb-4">A Fair Sourced Observability Platform</h2>
-		<p class="lead">Welcome to SIEMatic, your open platform for modern observability.</p>
-	</div>
+<!-- Hero -->
+<div class="row justify-content-center py-5 text-center">
+    <div class="col-md-8">
+        <h1 class="display-4 fw-bold mb-3">A Fair Sourced Observability Platform</h1>
+        <p class="lead text-muted mb-4">SIEMatic collects, indexes, and analyzes security events across your infrastructure — giving you real-time visibility, powerful search, and automated threat detection without vendor lock-in.</p>
+        {% if user.is_authenticated %}
+            <a href="{% url 'search2:dashboard' %}" class="btn btn-primary btn-lg me-2">Open Search</a>
+            <a href="{% url 'dashboarding:dashboard_list' %}" class="btn btn-outline-secondary btn-lg">Dashboards</a>
+        {% else %}
+            <a href="{% url 'login' %}" class="btn btn-primary btn-lg me-2">Login</a>
+            <a href="{% url 'register' %}" class="btn btn-outline-secondary btn-lg">Register</a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Feature highlights -->
+<div class="row g-4 py-4">
+    <div class="col-md-4">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-4">
+                <div class="fs-1 mb-3">&#128268;</div>
+                <h5 class="card-title fw-semibold">Event Ingestion</h5>
+                <p class="card-text text-muted">Deploy lightweight agents to collect logs and events from any source. Plugin-based architecture supports file tailing, syslog, and custom extractors out of the box.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-4">
+                <div class="fs-1 mb-3">&#128269;</div>
+                <h5 class="card-title fw-semibold">Search &amp; Explore</h5>
+                <p class="card-text text-muted">Query events with a powerful pipeline language — filter, group, annotate, join, and compute statistics. Save and share searches across your team.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-4">
+                <div class="fs-1 mb-3">&#127775;</div>
+                <h5 class="card-title fw-semibold">Dashboards &amp; Alerts</h5>
+                <p class="card-text text-muted">Build custom dashboards with charts and tables. Automated crawlers continuously scan for threats and generate findings mapped to MITRE ATT&amp;CK.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Footer CTA -->
+<div class="row py-5 text-center">
+    <div class="col">
+        <p class="text-muted mb-3">Get started in minutes with Docker Compose.</p>
+        <a href="https://github.com/mcindi/SIEMatic" class="btn btn-sm btn-outline-secondary">View on GitHub</a>
+    </div>
 </div>
 {% endblock %}

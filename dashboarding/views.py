@@ -4,7 +4,6 @@ from django.forms import formset_factory
 from django.http import JsonResponse
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import csrf_exempt
 
 from .utils import format_kwargs_spec
 from .forms import DashboardForm, PanelFormSet, DashboardParamsForm

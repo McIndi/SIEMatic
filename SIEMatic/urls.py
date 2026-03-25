@@ -22,6 +22,7 @@ from django.conf.urls.static import static
 
 from rest_framework import routers
 from rest_framework.authtoken import views as drf_auth_views
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from search2.api import SavedSearchViewSet
 
 # Check if we're running in indexer mode (minimal URLs only)
@@ -45,6 +46,8 @@ else:
         path('', include('project.urls')),
         path('admin/', admin.site.urls),
         path('api/', include(router.urls)),
+        path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+        path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
         path('api-token-auth/', drf_auth_views.obtain_auth_token, name='api_token_auth'),
         path('accounts/', include('django.contrib.auth.urls')),
         path('search2/', include('search2.urls')),

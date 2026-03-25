@@ -146,7 +146,11 @@
         const ctx = canvas.getContext("2d");
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
-      alert(`Too many results to chart (${rows.length}). Please refine your search.`);
+      const chartError = document.getElementById("chart-error");
+      if (chartError) {
+        chartError.textContent = `Too many results to chart (${rows.length}). Please refine your search.`;
+        chartError.classList.remove("d-none");
+      }
       return;
     }
     

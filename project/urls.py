@@ -6,7 +6,7 @@ This module defines URL patterns for authentication, user profiles, and landing 
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.views import PasswordResetView, LogoutView
-from .views import landing_page, profile_view, register
+from .views import landing_page, profile_view, register, toggle_theme
 from django.urls import include
 from django.contrib.auth.decorators import login_required
 
@@ -22,4 +22,5 @@ urlpatterns = [
     path('password_change/done/', auth_views.PasswordChangeDoneView.as_view(), name='password_change_done'),
     path('profile/', profile_view, name='profile'),
     path('register/', register, name='register'),
+    path('toggle-theme/', toggle_theme, name='toggle_theme'),
 ]
