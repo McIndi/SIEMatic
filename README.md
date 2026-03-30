@@ -12,88 +12,26 @@ SIEMatic is a fair-sourced observability platform built with Django, designed fo
 - **REST API:** Extensible endpoints for event ingestion and querying.
 - **Modern UI:** Responsive templates with Bootstrap, user authentication, and profile management.
 
-# 🧩 SIEMatic Feature Matrix & Roadmap
+## Current Status and Direction
 
-## **Feature Matrix**
+SIEMatic has moved beyond an MVP checklist and is now focused on iterative hardening and usability improvements.  This section captures the current shape of the platform at a high level.
 
-| Category                       | Feature                        | Status                    | Implementation Layer       | Notes                                                                        |
-| ------------------------------ | ------------------------------ | ------------------------- | -------------------------- | ---------------------------------------------------------------------------- |
-| **Core Search & Querying**     | Search Language Core           | ✅ Implemented             | Python (pipeline parser)   | Custom shlex/argparse-based DSL tied to Django ORM, Pandas, and Records      |
-|                                | Search Command Implementations | 🟡 In Progress            | Python registry            | Base commands (`search`, `aggregate`, `annotate`) working; expansion planned |
-|                                | SavedSearch System             | ✅ Implemented             | Django model               | Versionable, reusable queries with export/import                               |
-|                                | SavedSearch Params / Args      | 🔴 Not Started            | Django / Parser            | Needs support for variables and templating                                   |
-| **Data Model & Indexing**      | Event Indexer                  | ✅ Implemented             | Django ORM                 | Uses Django models for events; leverages BRIN where possible                 |
-|                                | BRIN Index Recommendation      | ✅ Documented              | Postgres setup guide       | Users create index manually when provisioning                                |
-|                                | Cross-Database Joins           | 🟡 Planned                | Pandas join layer          | To be implemented next; enables multi-source analysis                        |
-|                                | Multi-Database Design          | ✅ Implemented             | Django settings / Pandas   | Configurable, multi-source querying through ORM + Pandas                     |
-| **Dashboards & Visualization** | Dashboard Builder              | ✅ Implemented             | django-components          | Handles populating searches + dynamic panels                                 |
-|                                | Panel System                   | ✅ Implemented             | Django models/components   | Panels represent chart/table visualizations                                  |
-|                                | Template Tags                  | 🔴 Dropped                | Replaced by Components     | Former Chart/Table tags deprecated                                           |
-| **Agents & Indexers**          | Agent Framework                | ✅ Implemented             | WebSocket (TLS)            | Authenticated communication between agent/indexer                            |
-|                                | WorkerNode Tracking            | 🔴 Not Implemented        | Django model               | To track UUID, hostname, first_seen, last_seen                               |
-| **Crawlers / Analytics**       | Crawler Framework              | ✅ Implemented             | Django + Multiprocessing   | Plugin-based daemon/scheduled analytics with restart & cooldown; supports continuous and cron-based runs; multiple instances per plugin |
-|                                | MITRE ATT&CK Integration       | ✅ Implemented             | Django model / JSON import | Maps findings to tactics/techniques in plugins and models; dataset import planned |
-|                                | Findings / Alerts              | ✅ Implemented             | Django model               | Generates alerts with configurable re-alert cooldown and severity levels |
-|                                | Notification Hooks             | ✅ Implemented             | Email backend              | Email alerting for findings; extensible plugin system for other hooks |
-|                                | Data Retention                 | ✅ Implemented             | Scheduled crawler          | Automated deletion of old events with configurable retention periods and field-based filtering |
-| **Security & Access**          | Auth & RBAC                    | ✅ Implemented             | Django auth                | Native Django users/groups/permissions                                       |
-|                                | Django Guardian Integration    | 🔴 Not Implemented        | Optional plugin            | Will allow row-level object permissions                                      |
-|                                | API Authentication             | ✅ Implemented             | DRF token/session          | Uses Django REST framework                                                   |
-| **System Design**              | Async / Concurrent Execution   | ✅ Implemented selectively | asyncio / Django-Q ready   | Applied where beneficial (searches, agent comms)                             |
-|                                | Plugin/Extension System        | ✅ Implemented             | Registry                   | Search commands and agents register dynamically                              |
-|                                | REST API                       | ✅ Implemented             | Django REST framework      | Provides CRUD for dashboards, searches, events                               |
-|                                | Data Import / Export           | ✅ Implemented             | `dumpdata` / `loaddata`    | Full project export (events, dashboards, users, etc.)                        |
-|                                | Admin Dashboard                | ✅ Implemented             | Django admin               | Consolidated view of key models                                              |
-|                                | Logging & Metrics              | 🟡 Partial                | Python logging             | Structured event logging active, metrics planned                             |
-| **Licensing / Productization** | Licensing Model                | ✅ Defined                 | BSL-like policy            | Free for personal, non-profit, edu; paid for commercial                      |
-|                                | Docs & Example Datasets        | 🔴 Not Started            | Markdown / Fixtures        | Required for MVP release                                                     |
+What is stable today:
 
----
+- Event ingestion via indexer + agent services
+- Search pipeline for filtering, transforms, and aggregation
+- Crawler framework with scheduled/daemon execution, findings, and alerting
+- Role-based settings modules for web, indexer, agent, and crawler services
+- REST endpoints, admin workflows, and dashboarding foundations
 
-## 🛠 **Roadmap**
+Current improvement areas:
 
-### **Phase 1 — MVP Completion (Now → Next Milestone)**
+- Better configuration ergonomics for mixed local/container deployments
+- Expanded search command coverage and examples
+- Stronger testing and coverage across apps
+- Additional documentation and curated sample data
 
-Goal: Deliver self-contained, end-to-end SIEMatic that can ingest, search, visualize, and analyze.
-
-1. ✅ Finalize **search command library**
-2. ✅ Implement **crawler system**
-   - ✅ Continuous + scheduled runs (daemon and cron-based)
-   - ✅ Findings + MITRE mapping (with tactics/techniques in findings)
-   - ✅ Data retention policies (configurable per instance)
-3. 🔴 Implement **SavedSearch params/args**
-4. 🔴 Add **WorkerNode tracking model**
-5. 🟡 Enable **cross-database joins** via Pandas
-6. 🟡 Extend **SavedSearch export/import** to include crawlers and findings
-7. 🟡 Add **basic metrics + structured logging**
-8. 🔴 Draft **example datasets** and quickstart docs
-
----
-
-### **Phase 2 — Enrichment & Hardening**
-
-Goal: Improve analysis depth, reliability, and extensibility.
-
-1. 🟡 Add **MITRE ATT&CK dataset** import + mapping UI (basic mapping implemented in findings)
-2. ✅ Add **Notifications** (email alerting implemented)
-3. 🔴 Optional **Django Guardian integration**
-4. 🟡 Refine **RBAC enforcement** at search-command layer
-5. 🟡 Implement **dashboard export/import versioning**
-6. 🟡 Implement **crawler scheduling and management command** (run_crawlers command implemented)
-7. 🔴 Start **unit tests + coverage suite**
-
----
-
-### **Phase 3 — Productization & Documentation**
-
-Goal: Prep for public and commercial adoption.
-
-1. 🟡 Add **user guide** (install, configure, extend)
-2. 🟡 Add **developer guide** (build plugins, commands)
-3. 🟡 Finalize **BSL-style license text**
-4. 🟡 Package **docker-compose deployment**
-5. 🟡 Publish **example dashboards + search packs**
-6. 🔴 Optional **multi-tenant enhancements**
+Roadmap details are intentionally kept lightweight here and tracked in code/issues to avoid stale documentation.
 
 
 ## Getting Started
@@ -163,10 +101,10 @@ Goal: Prep for public and commercial adoption.
    ```
    Starts the ASGI server (Daphne) for WebSocket event ingestion.
 
-10. **Create an Agent User**
+9. **Create an Agent User**
     Log into the admin page at `/admin/project/customuser/` and add a user.
     Default permissions will be created for the user. This user will be used by the agent to authenticate with the indexer.
-9. **Run the Agent**
+10. **Run the Agent**
    ```bash
    set INDEXER_USERNAME=<Username>
    set INDEXER_PASSWORD=<Password>
@@ -178,7 +116,7 @@ Goal: Prep for public and commercial adoption.
    ```
    Starts the agent service for plugin management and heartbeat.
 
-10. **Run the Crawler**
+11. **Run the Crawler**
    ```bash
    set DJANGO_SETTINGS_MODULE=SIEMatic.settings.crawler  # On Windows
    # Or on Mac/Linux: export DJANGO_SETTINGS_MODULE=SIEMatic.settings.crawler
@@ -197,6 +135,13 @@ Follow the Quick Start guide above for local development or single instance depl
 ### Using SIEMatic with Docker Compose
 
 SIEMatic ships with a `docker-compose.yaml` for easy setup. Make sure to copy `.env.example` to `.env` and fill in required values.
+
+Important environment note:
+
+- `.env.example` is intended for container orchestration workflows (Docker/Podman compose).
+- The settings modules do not parse `.env.example` directly.
+- In containerized deployments, environment variables are injected by the runtime/orchestrator.
+- The Python settings are designed to work with direct environment variables and to default toward a single-machine deployment model when running services locally.
 
 #### Build and Start All Services
 ```bash
