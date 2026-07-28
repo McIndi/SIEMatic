@@ -16,6 +16,8 @@ RUN apt-get update \
 ENV VIRTUAL_ENV=/opt/venv
 RUN python -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+ARG DJANGO_SECRET_KEY=CHANGE_ME_TO_A_RANDOM_DEFAULT_SECRET_KEY
+ENV DJANGO_SECRET_KEY=$DJANGO_SECRET_KEY
 
 RUN python -m pip install --upgrade pip \
  && pip install --no-cache-dir -r requirements.txt
@@ -30,9 +32,10 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 COPY --from=builder /app /app
-RUN mkdir -p /app/log \
+RUN mkdir -p /app/logs \
  && chown -R appuser:appuser /app
 RUN chown -R appuser:appuser /opt/venv
 USER appuser
 EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["python", "-c", "import sys, urllib.request; response = urllib.request.urlopen('http://127.0.0.1:8000/accounts/login/', timeout=5); sys.exit(0 if response.status < 500 else 1)"]
 CMD ["python", "manage.py", "serve", "--host", "0.0.0.0","--port", "8000"]

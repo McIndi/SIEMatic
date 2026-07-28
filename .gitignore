@@ -15,11 +15,9 @@ staticfiles/
 sent_emails/
 
 # Logs
-logs/
 *.log
 
 .vscode/
-.github/
 
 build/
 dist/

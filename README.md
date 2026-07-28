@@ -586,7 +586,8 @@ Start with single-node Postgres, then scale DBs/crawlers as load grows.
 
 ## License
 
-BSL license. (Source Available)
+SIEMatic is licensed under the Business Source License 1.1. See the root
+[LICENSE](LICENSE) file for the full license text and Additional Use Grant.
 
 Free to use for Individuals, as well as Non-profit and Educational institutions with no feature restrictions.
 

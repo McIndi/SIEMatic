@@ -21,6 +21,8 @@ from events.extractors import is_json_sourcetype, extract_json
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+LOG_DIR = BASE_DIR / 'logs'
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # Quick-start development settings - unsuitable for production
@@ -102,13 +104,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'SIEMatic.wsgi.application'
 
-# Channels
 ASGI_APPLICATION = 'SIEMatic.asgi.application'
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer',
-    },
-}
 
 
 # Database
@@ -217,7 +213,7 @@ LOGGING = {
         'file': {
             'level': LOG_LEVEL,
             'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / f'{sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else sys.argv[0]}.log',
+            'filename': LOG_DIR / f'{sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else sys.argv[0]}.log',
             'formatter': 'verbose',
         },
     },
