@@ -6,11 +6,6 @@ For running the crawlers.
 
 from .base import *
 
-# Email settings for file-based backend
-EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'
-EMAIL_FILE_PATH = BASE_DIR / 'emails'
-DEFAULT_FROM_EMAIL = 'siematic@example.com'
-
 CRAWLER_PLUGINS = [
     'crawlers.plugins.failed_login_crawler.FailedLoginCrawler',
     'crawlers.plugins.always_finding_crawler.AlwaysFindingCrawler',
@@ -91,6 +86,6 @@ ALERTING_PLUGINS = [
 ALERTING_CONFIGS = {
     'email_alert': {
         'recipients': ['admin@example.com'],  # List of email addresses
-        'from_email': 'siematic@example.com',  # Optional, defaults to DEFAULT_FROM_EMAIL
+        'from_email': DEFAULT_FROM_EMAIL,  # Optional, defaults to DEFAULT_FROM_EMAIL
     },
 }

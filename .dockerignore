@@ -8,3 +8,4 @@ build/
 dist/
 .git/
 __pycache__/
+certs/

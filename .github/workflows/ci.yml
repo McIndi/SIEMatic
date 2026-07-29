@@ -5,7 +5,7 @@ on:
   pull_request:
 
 env:
-  DJANGO_SECRET_KEY: ci-secret-key-not-for-production
+  DJANGO_SECRET_KEY: ci-secret-key-for-siematic-workflow-only-2026-07-28-keep-out-of-prod
 
 jobs:
   test:
@@ -30,6 +30,11 @@ jobs:
 
       - name: Run Django checks
         run: python manage.py check --settings SIEMatic.settings.web
+
+      - name: Run deploy checks with TLS enabled
+        env:
+          SIEMATIC_TLS_ENABLED: "True"
+        run: python manage.py check --deploy --settings SIEMatic.settings.web
 
       - name: Run tests
         run: python manage.py test --settings SIEMatic.settings.web

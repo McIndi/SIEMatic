@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import importlib.util
 import os
 import json
 from pathlib import Path
@@ -17,28 +18,45 @@ import socket
 import platform
 import sys
 import threading
+from django.core.exceptions import ImproperlyConfigured
 from events.extractors import is_json_sourcetype, extract_json
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 LOG_DIR = BASE_DIR / 'logs'
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+SECRET_KEY_PLACEHOLDER = 'replace-me-with-a-generated-secret-key'
+
+
+def env_bool(name, default):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def env_list(name, default):
+    value = os.getenv(name)
+    if value is None:
+        return list(default)
+    return [item.strip() for item in value.split(',') if item.strip()]
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'CHANGE_ME_TO_A_RANDOM_DEFAULT_SECRET_KEY'    # Secret key is set below by environment variable DJANGO_SECRET_KEY
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+if not SECRET_KEY or SECRET_KEY == SECRET_KEY_PLACEHOLDER:
+    raise ImproperlyConfigured(
+        'DJANGO_SECRET_KEY must be set to a generated secret key. '
+        'Generate one with: '
+        'python -c "from django.core.management.utils import get_random_secret_key; '
+        'print(get_random_secret_key())"'
+    )
 
-# Environment variable support
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', SECRET_KEY)
-# DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() in ['true', '1', 'yes']
-DEBUG = False
-ALLOWED_HOSTS = os.environ.get(
-    'DJANGO_ALLOWED_HOSTS',
-    'localhost,127.0.0.1,::1'
-).split(',')
+DEBUG = env_bool('DJANGO_DEBUG', False)
+ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', ['localhost', '127.0.0.1', '::1'])
 
 INTERNAL_IPS = [
     '127.0.0.1',
@@ -80,7 +98,7 @@ MIDDLEWARE = [
     'django.middleware.gzip.GZipMiddleware',
 ]
 
-if DEBUG and not os.getenv("INDEXER_MODE") == "1":
+if DEBUG and os.getenv("INDEXER_MODE") != "1" and importlib.util.find_spec('debug_toolbar'):
     INSTALLED_APPS.append('debug_toolbar')
     MIDDLEWARE.append('debug_toolbar.middleware.DebugToolbarMiddleware')
 
@@ -177,18 +195,27 @@ AUTH_USER_MODEL = 'project.CustomUser'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
 
-# Email settings
-# Uncomment and configure the following for Gmail SMTP
-# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-# EMAIL_HOST = 'smtp.gmail.com'
-# EMAIL_PORT = 587
-# EMAIL_USE_TLS = True
-# EMAIL_HOST_USER = 'your-email@gmail.com'
-# EMAIL_HOST_PASSWORD = 'your-password'
+TLS_ENABLED = env_bool('SIEMATIC_TLS_ENABLED', False)
+SESSION_COOKIE_SECURE = TLS_ENABLED
+CSRF_COOKIE_SECURE = TLS_ENABLED
+SECURE_SSL_REDIRECT = TLS_ENABLED
+SECURE_HSTS_SECONDS = 31536000 if TLS_ENABLED else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = TLS_ENABLED
+SECURE_HSTS_PRELOAD = TLS_ENABLED
 
-# Default file-based email backend
-EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.filebased.EmailBackend')
 EMAIL_FILE_PATH = BASE_DIR / 'sent_emails'
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'localhost')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '25'))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', False)
+EMAIL_USE_SSL = env_bool('EMAIL_USE_SSL', False)
+if EMAIL_USE_TLS and EMAIL_USE_SSL:
+    raise ImproperlyConfigured(
+        'EMAIL_USE_TLS and EMAIL_USE_SSL are mutually exclusive; set only one.'
+    )
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'siematic@example.com')
 
 LOG_LEVEL = os.getenv('DJANGO_LOG_LEVEL', 'INFO').upper()
 LOGGING = {

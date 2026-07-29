@@ -10,7 +10,7 @@ INDEXER = {
     'host': os.getenv('INDEXER_HOSTNAME'),
     'port': os.getenv('INDEXER_PORT'),
 }
-ALLOWED_HOSTS = os.environ.get(
+ALLOWED_HOSTS = env_list(
     'DJANGO_ALLOWED_HOSTS',
-    'localhost,127.0.0.1,siematic-indexer,::1'
-).split(',')
+    ['localhost', '127.0.0.1', 'siematic-indexer', '::1'],
+)

@@ -37,5 +37,5 @@ RUN mkdir -p /app/logs \
 RUN chown -R appuser:appuser /opt/venv
 USER appuser
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["python", "-c", "import sys, urllib.request; response = urllib.request.urlopen('http://127.0.0.1:8000/accounts/login/', timeout=5); sys.exit(0 if response.status < 500 else 1)"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["python", "-c", "import os, ssl, sys, urllib.request; tls_enabled = os.getenv('SIEMATIC_TLS_ENABLED', '').strip().lower() in {'1', 'true', 'yes', 'on'}; scheme = 'https' if tls_enabled else 'http'; context = ssl._create_unverified_context() if tls_enabled else None; response = urllib.request.urlopen(f'{scheme}://127.0.0.1:8000/accounts/login/', timeout=5, context=context); sys.exit(0 if response.status < 500 else 1)"]
 CMD ["python", "manage.py", "serve", "--host", "0.0.0.0","--port", "8000"]

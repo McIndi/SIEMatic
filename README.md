@@ -125,9 +125,11 @@ Goal: Prep for public and commercial adoption.
    ```bash
    set DJANGO_SETTINGS_MODULE=SIEMatic.settings.web  # On Windows
    # Or on Mac/Linux: export DJANGO_SETTINGS_MODULE=SIEMatic.settings.web
-   
-   # If you don't change the default logging settings, you will need to create a directory for logs:
-   mkdir logs
+
+   # Generate a Django secret key and export it before running any management command
+   python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+   set DJANGO_SECRET_KEY=<paste-generated-secret>  # On Windows
+   # Or on Mac/Linux: export DJANGO_SECRET_KEY=<paste-generated-secret>
    ```
 
 4. **Set up your database**
@@ -362,6 +364,14 @@ Use the appropriate settings file when running each component:
 - Crawler: `--settings=SIEMatic.settings.crawler`
 
 This modular approach allows for optimized configurations per role and easier scaling across multiple machines.
+
+Common environment variables:
+
+- `DJANGO_SECRET_KEY`: required for every role; generate one with `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`.
+- `DJANGO_DEBUG`: enables Django debug mode. If `debug_toolbar` is not installed, SIEMatic skips loading it instead of crashing.
+- `DJANGO_ALLOWED_HOSTS`: comma-separated hostnames for Django host validation.
+- `SIEMATIC_TLS_ENABLED`: when `True`, enables Django's secure cookie, HTTPS redirect, and HSTS settings.
+- `EMAIL_BACKEND`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`, `DEFAULT_FROM_EMAIL`: mail delivery settings. The default backend stays file-based for local development.
 
 ## Project Structure
 
