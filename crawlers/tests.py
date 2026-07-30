@@ -167,14 +167,23 @@ class FindingTriageViewTests(TestCase):
             2,
         )
 
-    def test_only_staff_can_delete(self):
+    def test_non_staff_gets_forbidden_instead_of_admin_login_redirect(self):
         self.client.force_login(self.editor)
         denied = self.client.post(
             reverse('crawlers:finding_delete', args=(self.finding.pk,)),
         )
-        self.assertEqual(denied.status_code, 302)
+        self.assertEqual(denied.status_code, 403)
+        self.assertNotIn('Location', denied)
         self.assertTrue(Finding.objects.filter(pk=self.finding.pk).exists())
 
+    def test_anonymous_delete_uses_application_login(self):
+        delete_url = reverse('crawlers:finding_delete', args=(self.finding.pk,))
+
+        response = self.client.get(delete_url)
+
+        self.assertRedirects(response, f'{reverse("login")}?next={delete_url}')
+
+    def test_staff_can_delete(self):
         self.client.force_login(self.staff)
         deleted = self.client.post(
             reverse('crawlers:finding_delete', args=(self.finding.pk,)),

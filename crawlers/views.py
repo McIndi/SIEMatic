@@ -1,6 +1,6 @@
 from django.contrib import messages
-from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, permission_required
+from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
@@ -88,8 +88,10 @@ def finding_bulk_update(request):
 
 @login_required
 @permission_required('crawlers.view_finding', raise_exception=True)
-@staff_member_required
 def finding_delete(request, pk):
+    if not request.user.is_staff:
+        raise PermissionDenied
+
     finding = get_object_or_404(Finding, pk=pk)
     if request.method == 'POST':
         finding.delete()
