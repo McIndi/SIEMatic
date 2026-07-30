@@ -327,6 +327,30 @@ After running the following commands, you will have a zip file under `./dist/` c
   python bootstrap.py collectstatic
   ```
 
+### Updating Vendored Frontend Assets
+
+SIEMatic commits its browser dependencies under `static/vendor/` so the UI
+works without internet access. The pinned versions, source paths, and SHA-256
+checksums are recorded in `tools/vendor_manifest.json`.
+
+To download the recorded versions and verify every checksum:
+
+```bash
+python tools/vendor_assets.py
+```
+
+To update each dependency to the latest stable release in its supported version
+series and rewrite the manifest checksums:
+
+```bash
+python tools/vendor_assets.py --update
+```
+
+After an update, run `collectstatic` and the test suite, then commit both
+`tools/vendor_manifest.json` and `static/vendor/`. Version-series constraints
+in the manifest intentionally keep updates on compatible majors, including
+DataTables 2.x.
+
 ## Migrating from django-components to static JS
 
 This project previously used `django-components` for server-side components. To improve performance and simplify dependencies, UI components were migrated to static JavaScript files and plain Django includes. Key points:
