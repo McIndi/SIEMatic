@@ -22,7 +22,7 @@ services:
       DJANGO_SETTINGS_MODULE: SIEMatic.settings.web
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
-      SIEMATIC_TLS_ENABLED: ${SIEMATIC_TLS_ENABLED:-False}
+      SIEMATIC_TLS_ENABLED: ${SIEMATIC_TLS_ENABLED:-True}
       EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.filebased.EmailBackend}
       EMAIL_HOST: ${EMAIL_HOST:-localhost}
       EMAIL_PORT: ${EMAIL_PORT:-25}
@@ -39,8 +39,13 @@ services:
       DATABASE_PORT: ${DATABASE_PORT}
       CHERRYPY_PORT: ${CHERRYPY_PORT}
       CHERRYPY_HOST: ${CHERRYPY_HOST}
+      CHERRYPY_SSL: "True"
+      CHERRYPY_SSL_CERT: /app/certs/siematic.crt
+      CHERRYPY_SSL_KEY: /app/certs/siematic.key
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
 
+    volumes:
+      - ./certs:/app/certs:ro
     depends_on:
       - siematic-db
     ports:
@@ -56,7 +61,9 @@ services:
       DJANGO_SETTINGS_MODULE: SIEMatic.settings.indexer
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
-      SIEMATIC_TLS_ENABLED: ${SIEMATIC_TLS_ENABLED:-False}
+      SIEMATIC_TLS_ENABLED: ${SIEMATIC_TLS_ENABLED:-True}
+      INDEXER_SSL_CERT: /app/certs/siematic.crt
+      INDEXER_SSL_KEY: /app/certs/siematic.key
       EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.filebased.EmailBackend}
       EMAIL_HOST: ${EMAIL_HOST:-localhost}
       EMAIL_PORT: ${EMAIL_PORT:-25}
@@ -71,6 +78,10 @@ services:
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
       DATABASE_HOST: ${DATABASE_HOST}
       DATABASE_PORT: ${DATABASE_PORT}
+      INDEXER_HOSTNAME: 0.0.0.0
+      INDEXER_PORT: ${INDEXER_PORT:-5001}
+    volumes:
+      - ./certs:/app/certs:ro
     depends_on:
       - siematic-db
     restart: unless-stopped
@@ -84,7 +95,9 @@ services:
       DJANGO_SETTINGS_MODULE: SIEMatic.settings.agent
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
-      SIEMATIC_TLS_ENABLED: ${SIEMATIC_TLS_ENABLED:-False}
+      SIEMATIC_TLS_ENABLED: ${SIEMATIC_TLS_ENABLED:-True}
+      INDEXER_TLS: "True"
+      INDEXER_CA_BUNDLE: /app/certs/siematic.crt
       EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.filebased.EmailBackend}
       EMAIL_HOST: ${EMAIL_HOST:-localhost}
       EMAIL_PORT: ${EMAIL_PORT:-25}
@@ -101,6 +114,10 @@ services:
       DATABASE_PASSWORD: ${DATABASE_PASSWORD}
       DATABASE_HOST: ${DATABASE_HOST}
       DATABASE_PORT: ${DATABASE_PORT}
+      INDEXER_HOSTNAME: ${INDEXER_HOSTNAME:-siematic-indexer}
+      INDEXER_PORT: ${INDEXER_PORT:-5001}
+    volumes:
+      - ./certs/siematic.crt:/app/certs/siematic.crt:ro
     depends_on:
       - siematic-db
     restart: unless-stopped

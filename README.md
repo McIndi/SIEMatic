@@ -29,7 +29,7 @@ SIEMatic is a fair-sourced observability platform built with Django, designed fo
 | **Dashboards & Visualization** | Dashboard Builder              | ✅ Implemented             | django-components          | Handles populating searches + dynamic panels                                 |
 |                                | Panel System                   | ✅ Implemented             | Django models/components   | Panels represent chart/table visualizations                                  |
 |                                | Template Tags                  | 🔴 Dropped                | Replaced by Components     | Former Chart/Table tags deprecated                                           |
-| **Agents & Indexers**          | Agent Framework                | ✅ Implemented             | WebSocket (TLS)            | Authenticated communication between agent/indexer                            |
+| **Agents & Indexers**          | Agent Framework                | ✅ Implemented             | WebSocket (TLS)            | Authenticated, certificate-verified TLS communication between agent/indexer  |
 |                                | WorkerNode Tracking            | 🔴 Not Implemented        | Django model               | To track UUID, hostname, first_seen, last_seen                               |
 | **Crawlers / Analytics**       | Crawler Framework              | ✅ Implemented             | Django + Multiprocessing   | Plugin-based daemon/scheduled analytics with restart & cooldown; supports continuous and cron-based runs; multiple instances per plugin |
 |                                | MITRE ATT&CK Integration       | ✅ Implemented             | Django model / JSON import | Maps findings to tactics/techniques in plugins and models; dataset import planned |
@@ -375,7 +375,22 @@ Common environment variables:
 - `DJANGO_DEBUG`: enables Django debug mode. If `debug_toolbar` is not installed, SIEMatic skips loading it instead of crashing.
 - `DJANGO_ALLOWED_HOSTS`: comma-separated hostnames for Django host validation.
 - `SIEMATIC_TLS_ENABLED`: when `True`, enables Django's secure cookie, HTTPS redirect, and HSTS settings.
+- `CHERRYPY_SSL`, `CHERRYPY_SSL_CERT`, `CHERRYPY_SSL_KEY`: enable app-native HTTPS for the web service and select its PEM certificate and private key.
+- `INDEXER_TLS`: makes agents use HTTPS/WSS for indexer authentication and ingestion.
+- `INDEXER_SSL_CERT`, `INDEXER_SSL_KEY`: select the indexer's PEM certificate and private key for Daphne.
+- `INDEXER_CA_BUNDLE`: optional CA bundle used by agents to verify the indexer. Certificate verification is never disabled.
 - `EMAIL_BACKEND`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`, `DEFAULT_FROM_EMAIL`: mail delivery settings. The default backend stays file-based for local development.
+
+Generate the gitignored development certificate before starting the TLS-enabled
+Compose stack:
+
+```bash
+python tools/gen_dev_cert.py
+docker compose up --build
+```
+
+The generated certificate covers localhost and the Compose service names. Use a
+certificate issued by your deployment's trusted CA in production.
 
 ## Project Structure
 

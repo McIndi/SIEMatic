@@ -6,12 +6,12 @@ using the CherryPy web server with configurable options.
 """
 
 import os
-import sys
-import argparse
-import cherrypy
-from django.core.wsgi import get_wsgi_application
-from django.core.management.base import BaseCommand
 import logging
+from pathlib import Path
+
+import cherrypy
+from django.core.management.base import BaseCommand, CommandError
+from django.core.wsgi import get_wsgi_application
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,6 @@ class Command(BaseCommand):
         Args:
             parser: ArgumentParser instance.
         """
-        import os
         parser.add_argument('--host', default=os.environ.get('CHERRYPY_HOST', '127.0.0.1'), help='Host to bind CherryPy server (default: 127.0.0.1 or $CHERRYPY_HOST)')
         parser.add_argument('--port', type=int, default=int(os.environ.get('CHERRYPY_PORT', 8000)), help='Port to bind CherryPy server (default: 8000 or $CHERRYPY_PORT)')
         parser.add_argument('--threads', type=int, default=int(os.environ.get('CHERRYPY_THREADS', 10)), help='Number of CherryPy threads (default: 10 or $CHERRYPY_THREADS)')
@@ -98,11 +97,16 @@ class Command(BaseCommand):
             server_config['server.max_requests'] = options['max_requests']
         if options['ssl']:
             if not options['ssl_cert'] or not options['ssl_key']:
-                self.stderr.write(self.style.ERROR('--ssl-cert and --ssl-key are required for SSL.'))
-                sys.exit(1)
+                raise CommandError('--ssl-cert and --ssl-key are required for SSL.')
+            cert_path = Path(options['ssl_cert'])
+            key_path = Path(options['ssl_key'])
+            if not cert_path.is_file():
+                raise CommandError(f'SSL certificate does not exist: {cert_path}')
+            if not key_path.is_file():
+                raise CommandError(f'SSL private key does not exist: {key_path}')
             server_config['server.ssl_module'] = 'builtin'
-            server_config['server.ssl_certificate'] = options['ssl_cert']
-            server_config['server.ssl_private_key'] = options['ssl_key']
+            server_config['server.ssl_certificate'] = str(cert_path)
+            server_config['server.ssl_private_key'] = str(key_path)
 
         application = get_wsgi_application()
         server = DjangoCherryPyServer(application, options['host'], options['port'], server_config)

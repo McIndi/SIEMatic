@@ -60,8 +60,10 @@ AGENT = {
 }
 
 INDEXER = {
-    'host': os.getenv('INDEXER_HOSTNAME'),
-    'port': os.getenv('INDEXER_PORT'),
+    'host': os.getenv('INDEXER_HOSTNAME', 'localhost'),
+    'port': os.getenv('INDEXER_PORT', '8000'),
+    'tls': INDEXER_TLS,
+    'ca_bundle': INDEXER_CA_BUNDLE,
 }
 
 # Add Windows Event Log plugin if on Windows

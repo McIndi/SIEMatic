@@ -203,6 +203,11 @@ SECURE_HSTS_SECONDS = 31536000 if TLS_ENABLED else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = TLS_ENABLED
 SECURE_HSTS_PRELOAD = TLS_ENABLED
 
+# Agent-to-indexer transport security.  This is separate from TLS_ENABLED
+# because agents may connect to an indexer deployed on another host.
+INDEXER_TLS = env_bool('INDEXER_TLS', TLS_ENABLED)
+INDEXER_CA_BUNDLE = os.getenv('INDEXER_CA_BUNDLE') or None
+
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.filebased.EmailBackend')
 EMAIL_FILE_PATH = BASE_DIR / 'sent_emails'
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'localhost')

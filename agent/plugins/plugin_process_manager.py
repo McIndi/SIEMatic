@@ -3,18 +3,41 @@ Plugin process manager for agent plugins.
 Handles plugin lifecycle, authentication, and process management.
 """
 
-import base64
 import logging
 logger = logging.getLogger(__name__)
 logger.debug("agent.plugins.plugin_process_manager module loaded.")
 import time
 import multiprocessing
 import importlib
+import ssl
 import websockets
 import asyncio
 import json
 import requests
-from django.urls import reverse
+from pathlib import Path
+
+
+def get_indexer_transport(indexer_cfg):
+    """Return HTTP/WS schemes plus verification settings for the indexer."""
+    tls_enabled = bool(indexer_cfg.get('tls', False))
+    ca_bundle = indexer_cfg.get('ca_bundle')
+
+    if ca_bundle:
+        ca_path = Path(ca_bundle)
+        if not ca_path.is_file():
+            raise ValueError(f'INDEXER_CA_BUNDLE does not exist: {ca_path}')
+
+    websocket_ssl = None
+    if tls_enabled:
+        websocket_ssl = ssl.create_default_context(cafile=ca_bundle)
+
+    return {
+        'http_scheme': 'https' if tls_enabled else 'http',
+        'websocket_scheme': 'wss' if tls_enabled else 'ws',
+        # requests verifies against system roots when this is True.
+        'requests_verify': ca_bundle or True,
+        'websocket_ssl': websocket_ssl,
+    }
 
 
 def run_plugin(plugin_path, config, event_queue, stop_event):
@@ -48,12 +71,18 @@ def get_session_cookie(indexer_cfg, credentials):
     logger.info(f"get_session_cookie called with indexer_cfg={indexer_cfg}, credentials={'***' if credentials else None}")
     host = indexer_cfg.get('host', 'localhost')
     port = indexer_cfg.get('port', 8000)
-    logger.info(f"Authenticating to indexer at {host}:{port}")
-    login_url = f"http://{host}:{port}/login/"
+    transport = get_indexer_transport(indexer_cfg)
+    logger.info(
+        "Authenticating to indexer at %s://%s:%s",
+        transport['http_scheme'],
+        host,
+        port,
+    )
+    login_url = f"{transport['http_scheme']}://{host}:{port}/login/"
     if not credentials:
         raise ValueError("Credentials are required for authentication")
     with requests.Session() as session:
-        resp = session.get(login_url)
+        resp = session.get(login_url, verify=transport['requests_verify'])
         text = resp.text
         csrf_token = session.cookies.get('csrftoken')
         if not csrf_token:
@@ -70,7 +99,13 @@ def get_session_cookie(indexer_cfg, credentials):
         login_headers = {
             'Referer': login_url
         }
-        resp = session.post(login_url, data=payload, headers=login_headers, allow_redirects=False)
+        resp = session.post(
+            login_url,
+            data=payload,
+            headers=login_headers,
+            allow_redirects=False,
+            verify=transport['requests_verify'],
+        )
         if resp.status_code not in (200, 302):
             logger.error("Login failed with status code %d", resp.status_code)
             return None
@@ -87,6 +122,7 @@ def sender_process(event_queue, indexer_cfg, credentials=None):
     async def send_events():
         host = indexer_cfg.get('host', 'localhost')
         port = indexer_cfg.get('port', 8000)
+        transport = get_indexer_transport(indexer_cfg)
         headers = {}
         retry_count = 0
         max_retries = 5
@@ -103,11 +139,14 @@ def sender_process(event_queue, indexer_cfg, credentials=None):
         if not sessionid:
             logger.error("Failed to authenticate after retries, sender_process exiting")
             return
-        uri = f'ws://{host}:{port}/indexer/'
+        uri = f"{transport['websocket_scheme']}://{host}:{port}/indexer/"
         logger.info(f"Connecting to WebSocket {uri} with headers {headers}")
+        connect_options = {'additional_headers': headers}
+        if transport['websocket_ssl'] is not None:
+            connect_options['ssl'] = transport['websocket_ssl']
         while True:
             try:
-                async with websockets.connect(uri, additional_headers=headers) as websocket:
+                async with websockets.connect(uri, **connect_options) as websocket:
                     logger.info(f"WebSocket connection established to {uri}")
                     while True:
                         # Drain queue with soft limits
