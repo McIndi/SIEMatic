@@ -1,21 +1,24 @@
 {% extends "base.html" %}
 {% load crispy_forms_tags %}
+{% load static %}
 
 {% block head %}
-  <link rel="stylesheet" href="https://cdn.datatables.net/2.3.4/css/dataTables.dataTables.min.css">
+  <link rel="stylesheet" href="{% static 'vendor/datatables/dataTables.bootstrap5.min.css' %}">
+  <link rel="stylesheet" href="{% static 'vendor/datatables/buttons/buttons.bootstrap5.min.css' %}">
 {% endblock %}
 
 {% block scripts %}
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.datatables.net/2.3.4/js/dataTables.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
+  <script src="{% static 'vendor/jquery/jquery.min.js' %}"></script>
+  <script src="{% static 'vendor/chart.js/chart.umd.js' %}"></script>
+  <script src="{% static 'vendor/datatables/dataTables.min.js' %}"></script>
+  <script src="{% static 'vendor/datatables/dataTables.bootstrap5.min.js' %}"></script>
+  <script src="{% static 'vendor/datatables/buttons/dataTables.buttons.min.js' %}"></script>
+  <script src="{% static 'vendor/datatables/buttons/buttons.bootstrap5.min.js' %}"></script>
+  <script src="{% static 'vendor/jszip/jszip.min.js' %}"></script>
+  <script src="{% static 'vendor/pdfmake/pdfmake.min.js' %}"></script>
+  <script src="{% static 'vendor/pdfmake/vfs_fonts.js' %}"></script>
+  <script src="{% static 'vendor/datatables/buttons/buttons.html5.min.js' %}"></script>
+  <script src="{% static 'vendor/datatables/buttons/buttons.print.min.js' %}"></script>
   <script>
     // Initialize DataTables
     document.addEventListener("DOMContentLoaded", function () {

@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "packages": {
+    "bootstrap": {
+      "npm": "bootstrap",
+      "version": "5.3.8",
+      "version_prefix": "5.",
+      "assets": [
+        {
+          "source": "dist/css/bootstrap.min.css",
+          "path": "bootstrap/bootstrap.min.css",
+          "sha256": "d85327d99c7a3ee1f9b5d0500d1370acea3ad2db39c163c2f51f232baedbdede"
+        },
+        {
+          "source": "dist/css/bootstrap.min.css.map",
+          "path": "bootstrap/bootstrap.min.css.map",
+          "sha256": "48144faf6aa0fb3cd2ce748d9730238f888f4ab715f05dabd1c9af2c5671988a"
+        },
+        {
+          "source": "dist/js/bootstrap.bundle.min.js",
+          "path": "bootstrap/bootstrap.bundle.min.js",
+          "sha256": "e4fd49181388c48ec5040bd3fe66f57c29c8e67fcd8502b3354b96ec7ab47cc7"
+        },
+        {
+          "source": "dist/js/bootstrap.bundle.min.js.map",
+          "path": "bootstrap/bootstrap.bundle.min.js.map",
+          "sha256": "c61123e58cc0a4b65d737ba070c485911b3dbec6d7b802bdf6628395abd9c08b"
+        }
+      ]
+    },
+    "jquery": {
+      "npm": "jquery",
+      "version": "3.7.1",
+      "version_prefix": "3.",
+      "assets": [
+        {
+          "source": "dist/jquery.min.js",
+          "path": "jquery/jquery.min.js",
+          "sha256": "fc9a93dd241f6b045cbff0481cf4e1901becd0e12fb45166a8f17f95823f0b1a"
+        }
+      ]
+    },
+    "chart.js": {
+      "npm": "chart.js",
+      "version": "4.5.1",
+      "version_prefix": "4.",
+      "assets": [
+        {
+          "source": "dist/chart.umd.js",
+          "path": "chart.js/chart.umd.js",
+          "sha256": "ecc3cd1eeb8c34d2178e3f59fd63ec5a3d84358c11730af0b9958dc886d7652a"
+        },
+        {
+          "source": "dist/chart.umd.js.map",
+          "path": "chart.js/chart.umd.js.map",
+          "sha256": "50f788499bc584696c2344c77e91af0f80a518eca93e312ddbb8008d7525d7fa"
+        }
+      ]
+    },
+    "datatables": {
+      "npm": "datatables.net",
+      "version": "2.3.8",
+      "version_prefix": "2.",
+      "assets": [
+        {
+          "source": "js/dataTables.min.js",
+          "path": "datatables/dataTables.min.js",
+          "sha256": "14003b703de0e0019277baff32ce03a0b8a1aba6a97c86bb4b67d430336085de"
+        }
+      ]
+    },
+    "datatables-bootstrap5": {
+      "npm": "datatables.net-bs5",
+      "version": "2.3.8",
+      "version_prefix": "2.",
+      "assets": [
+        {
+          "source": "css/dataTables.bootstrap5.min.css",
+          "path": "datatables/dataTables.bootstrap5.min.css",
+          "sha256": "38a56c35899a27ed8f29096321472522cee35e25a91989116fe08f1de33401ec"
+        },
+        {
+          "source": "js/dataTables.bootstrap5.min.js",
+          "path": "datatables/dataTables.bootstrap5.min.js",
+          "sha256": "5adfe8c7957aaec56ef0403aa9e1fcdf7165785f092c34bb55c9075ea660ddbc"
+        }
+      ]
+    },
+    "datatables-buttons": {
+      "npm": "datatables.net-buttons",
+      "version": "3.2.6",
+      "version_prefix": "3.",
+      "assets": [
+        {
+          "source": "js/dataTables.buttons.min.js",
+          "path": "datatables/buttons/dataTables.buttons.min.js",
+          "sha256": "243f85216f9bed6b10492ed6f4ee60b6a451fddc4850d818eb5a240e4a241b32"
+        },
+        {
+          "source": "js/buttons.html5.min.js",
+          "path": "datatables/buttons/buttons.html5.min.js",
+          "sha256": "8a4bc1b894c183fdf2289fb42135978df647ff274832151da832867c8cb58f1f"
+        },
+        {
+          "source": "js/buttons.print.min.js",
+          "path": "datatables/buttons/buttons.print.min.js",
+          "sha256": "25a9469b202cf1d1302d8aa5200b81ef3c587e0798ed1ef72d16231f124d3c3c"
+        }
+      ]
+    },
+    "datatables-buttons-bootstrap5": {
+      "npm": "datatables.net-buttons-bs5",
+      "version": "3.2.6",
+      "version_prefix": "3.",
+      "assets": [
+        {
+          "source": "css/buttons.bootstrap5.min.css",
+          "path": "datatables/buttons/buttons.bootstrap5.min.css",
+          "sha256": "29a082ee1c05aac8eac50e71a1861cde10144c352a289c7ae3ad8dd0e44439b7"
+        },
+        {
+          "source": "js/buttons.bootstrap5.min.js",
+          "path": "datatables/buttons/buttons.bootstrap5.min.js",
+          "sha256": "e799b00d16687d245b868139cc956579fa5568b765656a7a86dfa3d24b9ddb3f"
+        }
+      ]
+    },
+    "jszip": {
+      "npm": "jszip",
+      "version": "3.10.1",
+      "version_prefix": "3.",
+      "assets": [
+        {
+          "source": "dist/jszip.min.js",
+          "path": "jszip/jszip.min.js",
+          "sha256": "acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e"
+        }
+      ]
+    },
+    "pdfmake": {
+      "npm": "pdfmake",
+      "version": "0.2.23",
+      "version_prefix": "0.2.",
+      "assets": [
+        {
+          "source": "build/pdfmake.min.js",
+          "path": "pdfmake/pdfmake.min.js",
+          "sha256": "4410187c36ed6dd8cbfbaeea5b6fab6244238b3479c6de1cfe125d2c61fc2ba0"
+        },
+        {
+          "source": "build/pdfmake.min.js.map",
+          "path": "pdfmake/pdfmake.min.js.map",
+          "sha256": "7b45a8c039db4915bceb165e6101746f5501b9a05c0e8264e2522a6acde057c5"
+        },
+        {
+          "source": "build/vfs_fonts.js",
+          "path": "pdfmake/vfs_fonts.js",
+          "sha256": "23e7c970fa9e75d296ea565939502a69ab2184cf40756c7d4670b6dabf470b58"
+        }
+      ]
+    }
+  }
+}
