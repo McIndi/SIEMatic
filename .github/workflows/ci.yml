@@ -38,6 +38,9 @@ jobs:
           SIEMATIC_TLS_ENABLED: "True"
         run: python manage.py check --deploy --settings SIEMatic.settings.web
 
+      - name: Collect static assets
+        run: python manage.py collectstatic --no-input --settings SIEMatic.settings.web
+
       - name: Run tests with coverage
         run: |
           coverage run manage.py test --settings SIEMatic.settings.web
