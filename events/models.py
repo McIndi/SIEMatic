@@ -8,6 +8,8 @@ with metadata and extracted fields.
 import logging
 from django.db import models
 
+from .extractors import apply_extractions
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,6 +29,12 @@ class Event(models.Model):
     created = models.DateTimeField(auto_now_add=True, db_index=True)
     updated = models.DateTimeField(auto_now=True, db_index=True)
     extracted_fields = models.JSONField(default=dict, blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        """Extract fields before the initial insert, keeping creation to one write."""
+        if self._state.adding:
+            apply_extractions(self)
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         """

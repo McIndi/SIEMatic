@@ -9,6 +9,57 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from .models import Event
+from .serializers import EventBulkSerializer
+
+
+class EventExtractionTests(TestCase):
+    def test_single_create_extracts_json_with_one_write(self):
+        with self.assertNumQueries(1):
+            event = Event.objects.create(
+                sourcetype='json',
+                data='{"message":"single","severity":3}',
+            )
+
+        self.assertEqual(
+            event.extracted_fields,
+            {'message': 'single', 'severity': 3},
+        )
+        self.assertEqual(
+            Event.objects.get(pk=event.pk).extracted_fields,
+            {'message': 'single', 'severity': 3},
+        )
+
+    def test_bulk_create_extracts_every_event_with_one_write(self):
+        serializer = EventBulkSerializer(
+            data=[
+                {'sourcetype': 'json', 'data': '{"message":"first"}'},
+                {'sourcetype': 'json', 'data': '{"message":"second"}'},
+            ],
+            many=True,
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+        with self.assertNumQueries(1):
+            events = serializer.save()
+
+        self.assertEqual(
+            [event.extracted_fields for event in events],
+            [{'message': 'first'}, {'message': 'second'}],
+        )
+        self.assertEqual(
+            list(
+                Event.objects.order_by('id').values_list(
+                    'extracted_fields', flat=True
+                )
+            ),
+            [{'message': 'first'}, {'message': 'second'}],
+        )
+
+    def test_extractor_failure_does_not_prevent_insert(self):
+        event = Event.objects.create(sourcetype='json', data='{malformed')
+
+        self.assertIsNotNone(event.pk)
+        self.assertEqual(event.extracted_fields, {})
 
 
 class EventApiPermissionTests(TestCase):

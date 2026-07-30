@@ -22,8 +22,9 @@ AGENT = {
     'plugins': [
         {
             'name': 'watchdog',
-            'enabled': True,
-            'patterns': ['logs/*.log'],
+            'enabled': False,
+            'path_to_watch': str(BASE_DIR / 'watched'),
+            'patterns': ['*.log'],
             'ignore_patterns': ['*.gz', '*.zip'],
             'ignore_directories': True,
             'case_sensitive': False,

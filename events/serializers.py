@@ -7,6 +7,7 @@ including bulk creation support.
 
 import logging
 from rest_framework import serializers
+from .extractors import apply_extractions
 from .models import Event
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,10 @@ class BulkEventSerializer(serializers.ListSerializer):
         Returns:
             list: List of created event instances.
         """
-        events = [Event(**item) for item in validated_data]
+        events = [
+            apply_extractions(Event(**item))
+            for item in validated_data
+        ]
         created_events = Event.objects.bulk_create(events)
         logger.debug(f"Bulk created {len(created_events)} events")
         return created_events
