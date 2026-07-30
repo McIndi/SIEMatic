@@ -95,3 +95,10 @@ if platform.system() == 'Windows':
             },
         ]
     )
+
+# ``rundev`` deliberately collects only lightweight, cross-platform host
+# telemetry. Production deployments retain the platform-specific defaults.
+if env_bool('SIEMATIC_AGENT_SYSMON_ONLY', False):
+    AGENT['plugins'] = [
+        plugin for plugin in AGENT['plugins'] if plugin['name'] == 'sysmon'
+    ]

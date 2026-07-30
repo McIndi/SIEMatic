@@ -26,7 +26,7 @@ SIEMatic is a fair-sourced observability platform built with Django, designed fo
 |                                | BRIN Index Recommendation      | ✅ Documented              | Postgres setup guide       | Users create index manually when provisioning                                |
 |                                | Cross-Database Joins           | 🟡 Planned                | Pandas join layer          | To be implemented next; enables multi-source analysis                        |
 |                                | Multi-Database Design          | ✅ Implemented             | Django settings / Pandas   | Configurable, multi-source querying through ORM + Pandas                     |
-| **Dashboards & Visualization** | Dashboard Builder              | ✅ Implemented             | django-components          | Handles populating searches + dynamic panels                                 |
+| **Dashboards & Visualization** | Dashboard Builder              | ✅ Implemented             | Django templates + JS      | Handles populating searches + dynamic panels                                 |
 |                                | Panel System                   | ✅ Implemented             | Django models/components   | Panels represent chart/table visualizations                                  |
 |                                | Template Tags                  | 🔴 Dropped                | Replaced by Components     | Former Chart/Table tags deprecated                                           |
 | **Agents & Indexers**          | Agent Framework                | ✅ Implemented             | WebSocket (TLS)            | Authenticated, certificate-verified TLS communication between agent/indexer  |
@@ -36,9 +36,9 @@ SIEMatic is a fair-sourced observability platform built with Django, designed fo
 |                                | Findings / Alerts              | ✅ Implemented             | Django model               | Generates alerts with configurable re-alert cooldown and severity levels |
 |                                | Notification Hooks             | ✅ Implemented             | Email backend              | Email alerting for findings; extensible plugin system for other hooks |
 |                                | Data Retention                 | ✅ Implemented             | Scheduled crawler          | Automated deletion of old events with configurable retention periods and field-based filtering |
-| **Security & Access**          | Auth & RBAC                    | ✅ Implemented             | Django auth                | Native Django users/groups/permissions                                       |
+| **Security & Access**          | Auth & RBAC                    | ✅ Implemented             | Django auth                | Admin-provisioned users, groups, and content-typed permissions                |
 |                                | Django Guardian Integration    | 🔴 Not Implemented        | Optional plugin            | Will allow row-level object permissions                                      |
-|                                | API Authentication             | ✅ Implemented             | DRF token/session          | Uses Django REST framework                                                   |
+|                                | API Authentication             | ✅ Implemented             | DRF Basic/session          | Authenticated by default; ingest writes require Agent-group permission       |
 | **System Design**              | Async / Concurrent Execution   | ✅ Implemented selectively | asyncio / Django-Q ready   | Applied where beneficial (searches, agent comms)                             |
 |                                | Plugin/Extension System        | ✅ Implemented             | Registry                   | Search commands and agents register dynamically                              |
 |                                | REST API                       | ✅ Implemented             | Django REST framework      | Provides CRUD for dashboards, searches, events                               |
@@ -100,93 +100,64 @@ Goal: Prep for public and commercial adoption.
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.12+ (CI exercises Python 3.13 and 3.14)
 - pip
-- virtualenv
 - Git
 
-### Setup Instructions
+### One-command development stack
 
-1. **Clone your project**
+1. Clone SIEMatic and create a virtual environment:
+
    ```bash
    git clone <your-repo-url>
    cd SIEMatic
-   ```
-
-2. **Create a virtual environment and install dependencies**
-   ```bash
-   python -m venv venv
-   venv\Scripts\activate  # On Windows
-   # Or on Mac/Linux: source venv/bin/activate
+   python -m venv .venv
+   # Windows PowerShell:
+   .venv\Scripts\Activate.ps1
+   # macOS/Linux:
+   source .venv/bin/activate
    pip install -r requirements.txt
    ```
 
-3. **Configure settings**
-   ```bash
-   set DJANGO_SETTINGS_MODULE=SIEMatic.settings.web  # On Windows
-   # Or on Mac/Linux: export DJANGO_SETTINGS_MODULE=SIEMatic.settings.web
+2. Start the complete local stack:
 
-   # Generate a Django secret key and export it before running any management command
-   python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
-   set DJANGO_SECRET_KEY=<paste-generated-secret>  # On Windows
-   # Or on Mac/Linux: export DJANGO_SECRET_KEY=<paste-generated-secret>
+   ```bash
+   python manage.py rundev
    ```
 
-4. **Set up your database**
+   No `.env` is needed. `rundev` uses the local `db.sqlite3`, applies
+   migrations, collects static assets, generates `certs/siematic.crt` and
+   `certs/siematic.key` when absent, and supervises:
+
+   - the HTTPS web app at `https://localhost:8000/`;
+   - the TLS WebSocket indexer at `https://localhost:8001/`; and
+   - an authenticated agent running only the cross-platform sysmon plugin.
+
+   Real CPU, memory, disk, and network telemetry should be searchable within
+   a few seconds. The certificate is self-signed, so accept the browser warning
+   for local development. Press Ctrl+C to stop the entire process tree.
+
+   Use different ports when the defaults are occupied:
+
    ```bash
-   python manage.py migrate
+   python manage.py rundev --web-port 8443 --indexer-port 8444
    ```
 
-5. **Create a superuser (admin account)**
-   ```bash
-   python manage.py createsuperuser
-   ```
+### Provisioning users
 
-6. **Run the development server**
-   ```bash
-   # Collect static files
-   python manage.py collectstatic
-   python manage.py runserver
-   ```
+Self-registration is disabled. To create the first administrator, stop the
+stack and run:
 
-7. **Run the production server (CherryPy)**
-   ```bash
-   python manage.py serve
-   ```
-   You can configure CherryPy with environment variables (see below) or command-line arguments.
+```bash
+python manage.py rundev --create-superuser
+```
 
-8. **Run the Indexer**
-   ```bash
-   set DJANGO_SETTINGS_MODULE=SIEMatic.settings.indexer  # On Windows
-   set INDEXER_HOSTNAME=127.0.0.1
-   set INDEXER_PORT=7999
-   # On Mac/Linux: use export instead of set
-   python manage.py indexer
-   ```
-   Starts the ASGI server (Daphne) for WebSocket event ingestion.
-
-10. **Create an Agent User**
-    Log into the admin page at `/admin/project/customuser/` and add a user.
-    Default permissions will be created for the user. This user will be used by the agent to authenticate with the indexer.
-9. **Run the Agent**
-   ```bash
-   set INDEXER_USERNAME=<Username>
-   set INDEXER_PASSWORD=<Password>
-   set INDEXER_HOSTNAME=127.0.0.1
-   set INDEXER_PORT=7999
-   set DJANGO_SETTINGS_MODULE=SIEMatic.settings.agent  # On Windows
-   # Or on Mac/Linux: export DJANGO_SETTINGS_MODULE=SIEMatic.settings.agent
-   python manage.py agent
-   ```
-   Starts the agent service for plugin management and heartbeat.
-
-10. **Run the Crawler**
-   ```bash
-   set DJANGO_SETTINGS_MODULE=SIEMatic.settings.crawler  # On Windows
-   # Or on Mac/Linux: export DJANGO_SETTINGS_MODULE=SIEMatic.settings.crawler
-   python manage.py run_crawlers
-   ```
-   Starts the crawler service for analytics, alerting, and automated data retention. Supports multiple concurrent crawler instances with different configurations.
+After answering Django's prompts, the development stack starts normally. Sign
+in at `https://localhost:8000/admin/`. Create ordinary users under
+`/admin/project/customuser/`; they are automatically placed in the
+`Registered User` group with read permissions. Create dedicated ingest service
+accounts and add them to the `Agent` group. Never use an administrator account
+for an agent.
 
 ## Deployment Options
 
@@ -395,15 +366,29 @@ This modular approach allows for optimized configurations per role and easier sc
 
 Common environment variables:
 
-- `DJANGO_SECRET_KEY`: required for every role; generate one with `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`.
-- `DJANGO_DEBUG`: enables Django debug mode. If `debug_toolbar` is not installed, SIEMatic skips loading it instead of crashing.
-- `DJANGO_ALLOWED_HOSTS`: comma-separated hostnames for Django host validation.
-- `SIEMATIC_TLS_ENABLED`: when `True`, enables Django's secure cookie, HTTPS redirect, and HSTS settings.
-- `CHERRYPY_SSL`, `CHERRYPY_SSL_CERT`, `CHERRYPY_SSL_KEY`: enable app-native HTTPS for the web service and select its PEM certificate and private key.
-- `INDEXER_TLS`: makes agents use HTTPS/WSS for indexer authentication and ingestion.
-- `INDEXER_SSL_CERT`, `INDEXER_SSL_KEY`: select the indexer's PEM certificate and private key for Daphne.
-- `INDEXER_CA_BUNDLE`: optional CA bundle used by agents to verify the indexer. Certificate verification is never disabled.
-- `EMAIL_BACKEND`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`, `DEFAULT_FROM_EMAIL`: mail delivery settings. The default backend stays file-based for local development.
+- Django: `DJANGO_SECRET_KEY` (required outside `rundev`),
+  `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, and `DJANGO_LOG_LEVEL`. Generate a
+  production secret with
+  `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`.
+- Database: `DATABASE_ENGINE`, `DATABASE_NAME`, `DATABASE_USER`,
+  `DATABASE_PASSWORD`, `DATABASE_HOST`, and `DATABASE_PORT`. Defaults select
+  the local SQLite database; Compose selects PostgreSQL.
+- Web TLS/server: `SIEMATIC_TLS_ENABLED`, `CHERRYPY_HOST`,
+  `CHERRYPY_PORT`, `CHERRYPY_THREADS`, `CHERRYPY_SSL`,
+  `CHERRYPY_SSL_CERT`, `CHERRYPY_SSL_KEY`, `CHERRYPY_AUTORELOAD`,
+  `CHERRYPY_MAX_REQUESTS`, and `CHERRYPY_TIMEOUT`.
+- Indexer/agent: `INDEXER_HOSTNAME`, `INDEXER_PORT`, `INDEXER_USERNAME`,
+  `INDEXER_PASSWORD`, `INDEXER_TLS`, `INDEXER_SSL_CERT`,
+  `INDEXER_SSL_KEY`, and `INDEXER_CA_BUNDLE`. The CA bundle is used by both
+  HTTPS authentication and WSS ingestion; verification is never disabled.
+  `SIEMATIC_AGENT_SYSMON_ONLY` limits the agent to sysmon and is enabled
+  automatically by `rundev`.
+- API throttles: `SIEMATIC_INGEST_THROTTLE_RATE`,
+  `SIEMATIC_SEARCH_THROTTLE_RATE`, and `SIEMATIC_ANON_THROTTLE_RATE`.
+- Email: `EMAIL_BACKEND`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`,
+  `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`, and
+  `DEFAULT_FROM_EMAIL`. The default backend writes messages to
+  `sent_emails/`; `EMAIL_USE_TLS` and `EMAIL_USE_SSL` are mutually exclusive.
 
 Generate the gitignored development certificate before starting the TLS-enabled
 Compose stack:
@@ -595,7 +580,7 @@ Create plugins in `crawlers/plugins/` inheriting from `BaseCrawlerPlugin`. Imple
 
 Example: `FailedLoginCrawler` detects "failed login" in event data, creates findings with Credential Access: Brute Force mapping, and respects time windows and cooldowns.
 
-Findings are stored in the `Finding` model and viewable in Django admin.
+Findings are stored in the `Finding` model and can be triaged at `/findings/`.
 
 ## Performance Tuning and Scaling
 
@@ -628,7 +613,7 @@ Start with single-node Postgres, then scale DBs/crawlers as load grows.
 - Update `settings/agent.py` for agent-specific configurations
 - Update `settings/indexer.py` for indexer-specific configurations
 - Update `settings/crawler.py` for crawler-specific configurations
-- Add fields to registration/profile in `project/forms.py`
+- Add profile fields in `project/forms.py`
 - Swap the Bahunya CSS in `base.html` for your own style
 
 ## Security Notes
