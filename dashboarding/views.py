@@ -114,6 +114,7 @@ def dashboard_delete(request, pk):
         return redirect('dashboarding:dashboard_list')
     return render(request, 'dashboarding/dashboard_confirm_delete.html', {'dashboard': dashboard})
 
+@login_required
 @require_http_methods(["POST"])
 def panel_preview(request):
     search = request.POST.get('search', '')

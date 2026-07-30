@@ -10,6 +10,7 @@ from .serializers import SavedSearchSerializer
 
 class Search2RunView(APIView):
     permission_classes = [IsAuthenticated]
+    throttle_scope = 'search'
 
     def post(self, request):
         query = request.data.get("query", "")
@@ -28,7 +29,9 @@ class SavedSearchViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return SavedSearch.objects.filter(owner=self.request.user)
+        if self.action in {'update', 'partial_update', 'destroy'}:
+            return SavedSearch.objects.filter(owner=self.request.user)
+        return SavedSearch.objects.visible_to(self.request.user).order_by('name')
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)

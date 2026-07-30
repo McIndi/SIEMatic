@@ -5,15 +5,24 @@ This module provides REST API views for Event models using Django REST framework
 """
 
 import logging
-from django.shortcuts import render
-from rest_framework import viewsets, status
+from rest_framework import permissions, status, viewsets
 from rest_framework.response import Response
-from django.conf import settings
-from rest_framework.permissions import IsAuthenticated
 from .models import Event
 from .serializers import EventSerializer, EventBulkSerializer
 
 logger = logging.getLogger(__name__)
+
+
+class EventModelPermissions(permissions.DjangoModelPermissions):
+    perms_map = {
+        'GET': ['%(app_label)s.view_%(model_name)s'],
+        'OPTIONS': ['%(app_label)s.view_%(model_name)s'],
+        'HEAD': ['%(app_label)s.view_%(model_name)s'],
+        'POST': ['%(app_label)s.add_%(model_name)s'],
+        'PUT': ['%(app_label)s.change_%(model_name)s'],
+        'PATCH': ['%(app_label)s.change_%(model_name)s'],
+        'DELETE': ['%(app_label)s.delete_%(model_name)s'],
+    }
 
 
 class EventViewSet(viewsets.ModelViewSet):
@@ -24,7 +33,8 @@ class EventViewSet(viewsets.ModelViewSet):
     """
     queryset = Event.objects.all()
     serializer_class = EventSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [EventModelPermissions]
+    throttle_scope = 'ingest'
     filterset_fields = ['index', 'sourcetype', 'source', 'host', 'created', 'updated']
     search_fields = ['index', 'sourcetype', 'source', 'host', 'created', 'updated', 'data', 'extracted_fields']
 

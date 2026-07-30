@@ -216,6 +216,9 @@ if EMAIL_USE_TLS and EMAIL_USE_SSL:
         'EMAIL_USE_TLS and EMAIL_USE_SSL are mutually exclusive; set only one.'
     )
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'siematic@example.com')
+INGEST_THROTTLE_RATE = os.getenv('SIEMATIC_INGEST_THROTTLE_RATE', '20000/hour')
+SEARCH_THROTTLE_RATE = os.getenv('SIEMATIC_SEARCH_THROTTLE_RATE', '120/min')
+ANON_THROTTLE_RATE = os.getenv('SIEMATIC_ANON_THROTTLE_RATE', '20/hour')
 
 LOG_LEVEL = os.getenv('DJANGO_LOG_LEVEL', 'INFO').upper()
 LOGGING = {
@@ -274,10 +277,21 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.BasicAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
         'rest_framework.filters.SearchFilter',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'ingest': INGEST_THROTTLE_RATE,
+        'search': SEARCH_THROTTLE_RATE,
+        'anon': ANON_THROTTLE_RATE,
+    },
 }
 
 

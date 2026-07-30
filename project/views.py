@@ -1,16 +1,15 @@
 """
 Views for the project app.
 
-This module contains Django views for landing page, user profiles, and registration.
+This module contains Django views for the landing page and user profiles.
 """
 
 import logging
 from django.contrib import messages
-from django.shortcuts import render, redirect
+from django.shortcuts import render
 from .forms import UserProfileForm
 from .models import UserProfile
 from django.contrib.auth.decorators import login_required
-from .forms import CustomUserCreationForm
 
 logger = logging.getLogger(__name__)
 
@@ -53,26 +52,3 @@ def profile_view(request):
     else:
         form = UserProfileForm(instance=profile)
     return render(request, 'profile.html', {'form': form})
-
-
-def register(request):
-    """
-    Handle user registration.
-
-    Args:
-        request: The HTTP request.
-
-    Returns:
-        Rendered registration page with form.
-    """
-    if request.method == 'POST':
-        form = CustomUserCreationForm(request.POST)
-        if form.is_valid():
-            user = form.save()
-            logger.info(f"New user registered: {user.username}")
-            return redirect('login')
-    else:
-        form = CustomUserCreationForm()
-    return render(request, 'register.html', {'form': form})
-
-# Create your views here.

@@ -1,7 +1,15 @@
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import Client, TestCase
 from django.urls import reverse
+from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.test import APIClient
+
+from search2.api import Search2RunView
+from search2.commands.run_saved_search import RunSavedSearchCommand
 from .models import SavedSearch
 from .utils import extract_field_names, debug_results_structure
 
@@ -40,6 +48,109 @@ class SavedSearchCRUDTests(TestCase):
         response = self.client.post(url)
         self.assertEqual(response.status_code, 302)
         self.assertFalse(SavedSearch.objects.filter(pk=ss.pk).exists())
+
+
+class SavedSearchVisibilityTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner', password='testpass')
+        self.viewer = User.objects.create_user(username='viewer', password='testpass')
+        self.third_party = User.objects.create_user(username='third', password='testpass')
+        self.client = Client()
+        self.client.login(username='viewer', password='testpass')
+        self.api_client = APIClient()
+        self.api_client.force_authenticate(user=self.viewer)
+
+        self.viewer_own = SavedSearch.objects.create(owner=self.viewer, name='Viewer Own', query='search viewer')
+        self.shared = SavedSearch.objects.create(owner=self.owner, name='Shared Search', query='search shared')
+        self.shared.shared_with.add(self.viewer)
+        self.public = SavedSearch.objects.create(owner=self.owner, name='Public Search', query='search public', is_public=True)
+        self.private_other = SavedSearch.objects.create(owner=self.owner, name='Private Other', query='search private')
+
+    def test_savedsearch_list_shows_visible_searches_only(self):
+        response = self.client.get(reverse('savedsearch_list'))
+
+        self.assertContains(response, 'Viewer Own')
+        self.assertContains(response, 'Shared Search')
+        self.assertContains(response, 'Public Search')
+        self.assertNotContains(response, 'Private Other')
+
+    def test_savedsearch_api_lists_visible_searches_only(self):
+        response = self.api_client.get(reverse('savedsearch-list'))
+
+        self.assertEqual(response.status_code, 200)
+        names = {item['name'] for item in response.json()}
+        self.assertSetEqual(names, {'Viewer Own', 'Shared Search', 'Public Search'})
+
+    def test_savedsearch_api_update_stays_owner_only(self):
+        response = self.api_client.patch(
+            reverse('savedsearch-detail', args=[self.shared.pk]),
+            {'query': 'changed'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_run_saved_search_prefers_owned_search_on_duplicate_name(self):
+        SavedSearch.objects.create(owner=self.viewer, name='Duplicate', query='search mine')
+        other = SavedSearch.objects.create(owner=self.owner, name='Duplicate', query='search theirs')
+        other.shared_with.add(self.viewer)
+
+        command = RunSavedSearchCommand()
+        ctx = SimpleNamespace(request=SimpleNamespace(user=self.viewer))
+        args = SimpleNamespace(name='Duplicate', events=None)
+
+        with patch('search2.commands.run_saved_search.run_pipeline', return_value=[]) as run_pipeline:
+            command._run(None, args, ctx)
+
+        run_pipeline.assert_called_once_with(None, 'search mine', request=ctx.request)
+
+    def test_run_saved_search_rejects_unshared_search(self):
+        command = RunSavedSearchCommand()
+        ctx = SimpleNamespace(request=SimpleNamespace(user=self.viewer))
+        args = SimpleNamespace(name='Private Other', events=None)
+
+        with self.assertRaisesMessage(ValueError, "does not exist or is not shared with you"):
+            command._run(None, args, ctx)
+
+    def test_run_saved_search_rejects_ambiguous_shared_name(self):
+        first = SavedSearch.objects.create(owner=self.owner, name='Ambiguous', query='search one', is_public=True)
+        second = SavedSearch.objects.create(owner=self.third_party, name='Ambiguous', query='search two')
+        second.shared_with.add(self.viewer)
+
+        command = RunSavedSearchCommand()
+        ctx = SimpleNamespace(request=SimpleNamespace(user=self.viewer))
+        args = SimpleNamespace(name='Ambiguous', events=None)
+
+        with self.assertRaisesMessage(ValueError, "Multiple shared or public SavedSearch objects named 'Ambiguous'"):
+            command._run(None, args, ctx)
+
+        first.delete()
+
+
+class SearchApiThrottleTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='throttleuser', password='testpass')
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_search_api_throttles_after_limit(self):
+        cache.clear()
+        class TestSearchThrottle(ScopedRateThrottle):
+            THROTTLE_RATES = {'search': '2/min'}
+
+        original_throttle_classes = Search2RunView.throttle_classes
+        Search2RunView.throttle_classes = [TestSearchThrottle]
+        try:
+            with patch('search2.api.run_pipeline', return_value=[]):
+                first = self.client.post(reverse('search2_run_api'), {'query': 'search index=default'}, format='json')
+                second = self.client.post(reverse('search2_run_api'), {'query': 'search index=default'}, format='json')
+                third = self.client.post(reverse('search2_run_api'), {'query': 'search index=default'}, format='json')
+        finally:
+            Search2RunView.throttle_classes = original_throttle_classes
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(third.status_code, 429)
 
 def debug_timestamp_fields(results, field1="created", field2="created_second"):
     """

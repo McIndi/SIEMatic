@@ -8,7 +8,7 @@ from .models import SavedSearch
 class SavedSearchForm(forms.ModelForm):
     class Meta:
         model = SavedSearch
-        fields = ['name', 'query']
+        fields = ['name', 'query', 'shared_with', 'is_public']
 
 class SearchDashboardForm(forms.Form):
     query = forms.CharField(label='Search Query', required=True, widget=forms.Textarea)

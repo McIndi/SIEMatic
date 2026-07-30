@@ -19,7 +19,7 @@ def savedsearch_list(request):
 	"""
 	logger = logging.getLogger(__name__)
 	logger.info("Entered savedsearch_list view")
-	searches = SavedSearch.objects.filter(owner=request.user)
+	searches = SavedSearch.objects.visible_to(request.user).order_by('name')
 	logger.debug("Found %d saved searches for user %s", searches.count(), request.user)
 	return render(request, 'search2/savedsearch_list.html', {'searches': searches})
 
@@ -50,6 +50,7 @@ def savedsearch_create(request):
 			saved_search = form.save(commit=False)
 			saved_search.owner = request.user
 			saved_search.save()
+			form.save_m2m()
 			logger.info("SavedSearch created for user %s with pk=%s", request.user, saved_search.pk)
 			return redirect('savedsearch_list')
 		else:
@@ -160,6 +161,6 @@ def dashboard(request):
 			'summary': None,
 			'help_rows': generate_command_help_rows(),
 		}
-	context['saved_searches'] = list(SavedSearch.objects.filter(owner=request.user).order_by('name'))
+	context['saved_searches'] = list(SavedSearch.objects.visible_to(request.user).order_by('name'))
 	logger.info("Dashboard view rendering response")
 	return render(request, 'search2/dashboard.html', context)

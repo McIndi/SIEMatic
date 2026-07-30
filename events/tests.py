@@ -1,33 +1,39 @@
 
 """
 Tests for the events app.
-
-This module contains unit tests for event models, serializers, signals, and consumers.
-Currently contains commented-out WebSocket consumer tests.
 """
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
+from django.test import TestCase
+from django.urls import reverse
+from rest_framework.test import APIClient
 
-# from django.test import TransactionTestCase
-# from channels.testing import WebsocketCommunicator
-# from SIEMatic.asgi import application
-# from django.contrib.auth import get_user_model
-# import json
-# from agent.plugins.plugin_process_manager import get_session_cookie
+from .models import Event
 
-# class EventConsumerTests(TransactionTestCase):
-#     def setUp(self):
-#         self.user = get_user_model().objects.create_user(username="testuser", password="testpass")
 
-#     async def test_heartbeat_event(self):
-#         # Setup login
-#         indexer_cfg = {"host": "localhost", "port": 8000}
-#         credentials = {"username": "testuser", "password": "testpass"}
-#         sessionid = get_session_cookie(indexer_cfg, credentials)
-#         headers = [(b'cookie', f'sessionid={sessionid}'.encode())] if sessionid else []
-#         communicator = WebsocketCommunicator(application, "/indexer/", headers=headers)
-#         connected, _ = await communicator.connect()
-#         self.assertTrue(connected)
-#         heartbeat = {"type": "heartbeat", "timestamp": 1234567890}
-#         await communicator.send_json_to(heartbeat)
-#         response = await communicator.receive_json_from()
-#         self.assertEqual(response, heartbeat)
-#         await communicator.disconnect()
+class EventApiPermissionTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username='eventuser', password='testpass')
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        self.payload = {
+            'index': 'default',
+            'sourcetype': 'default',
+            'source': 'api',
+            'host': 'localhost',
+            'data': '{"message":"hello"}',
+        }
+
+    def test_view_only_user_cannot_create_event(self):
+        response = self.client.post(reverse('event-list'), self.payload, format='json')
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(Event.objects.count(), 0)
+
+    def test_agent_group_user_can_create_event(self):
+        self.user.groups.add(Group.objects.get(name='Agent'))
+
+        response = self.client.post(reverse('event-list'), self.payload, format='json')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Event.objects.count(), 1)

@@ -1,33 +1,44 @@
 """
 Tests for the project app.
 
-This module contains unit tests for user registration, profiles, and authentication.
+This module contains unit tests for profiles, authentication, and default permissions.
 """
 from django.forms.models import model_to_dict
 from django.test import TestCase, Client
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.contrib.auth import get_user_model
 from .models import UserProfile
 
 class UserRegistrationTests(TestCase):
     """
-    Tests for user registration functionality.
+    Tests for removed self-registration routes.
     """
 
-    def test_register_view_get(self):
-        response = self.client.get(reverse('register'))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Register')
+    def test_register_route_name_is_removed(self):
+        with self.assertRaises(NoReverseMatch):
+            reverse('register')
 
-    def test_register_view_post(self):
+    def test_register_path_returns_404(self):
+        response = self.client.get('/register/')
+        self.assertEqual(response.status_code, 404)
+
+
+class DefaultPermissionTests(TestCase):
+    def test_new_user_gets_registered_group_and_expected_permissions(self):
         User = get_user_model()
-        response = self.client.post(reverse('register'), {
-            'username': 'testuser',
-            'password1': 'SuperSecret123',
-            'password2': 'SuperSecret123',
-        })
-        self.assertRedirects(response, reverse('login'))
-        self.assertTrue(User.objects.filter(username='testuser').exists())
+        user = User.objects.create_user(username='permuser', password='testpass')
+
+        self.assertTrue(user.groups.filter(name='Registered User').exists())
+        self.assertSetEqual(
+            user.get_all_permissions(),
+            {
+                'events.view_event',
+                'dashboarding.view_dashboard',
+                'dashboarding.view_panel',
+                'crawlers.view_finding',
+                'search2.view_savedsearch',
+            },
+        )
 
 
 class UserProfileTests(TestCase):

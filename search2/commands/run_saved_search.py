@@ -1,5 +1,4 @@
 import logging
-from django.apps import apps
 from search2.models import SavedSearch
 from search2.engine.core import run_pipeline
 
@@ -26,11 +25,32 @@ class RunSavedSearchCommand:
         return self._run(rows, args, ctx)
 
     def _run(self, data, args, ctx):
-        try:
-            saved_search = SavedSearch.objects.get(name=args.name)
-        except SavedSearch.DoesNotExist:
-            logger.error(f"SavedSearch with name '{args.name}' does not exist.")
-            raise ValueError(f"SavedSearch with name '{args.name}' does not exist.")
+        request = getattr(ctx, "request", None)
+        user = getattr(request, "user", None)
+        if not getattr(user, "is_authenticated", False):
+            raise ValueError("run_saved_search requires an authenticated user context.")
+
+        visible_searches = SavedSearch.objects.visible_to(user).filter(name=args.name).distinct()
+        owned_searches = list(visible_searches.filter(owner=user))
+        if owned_searches:
+            if len(owned_searches) > 1:
+                raise ValueError(
+                    f"Multiple owned SavedSearch objects named '{args.name}' exist. "
+                    "Rename one of them or run a more specific search."
+                )
+            saved_search = owned_searches[0]
+        else:
+            accessible_searches = list(visible_searches.exclude(owner=user))
+            if not accessible_searches:
+                logger.error("SavedSearch with name '%s' is not visible to %s.", args.name, user)
+                raise ValueError(f"SavedSearch with name '{args.name}' does not exist or is not shared with you.")
+            if len(accessible_searches) > 1:
+                raise ValueError(
+                    f"Multiple shared or public SavedSearch objects named '{args.name}' are visible to you. "
+                    "Ask an owner to rename one of them."
+                )
+            saved_search = accessible_searches[0]
+
         query = saved_search.query
         # If events are provided, use them as the first argument
         if args.events:

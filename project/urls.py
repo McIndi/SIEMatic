@@ -5,9 +5,8 @@ This module defines URL patterns for authentication, user profiles, and landing 
 """
 from django.urls import path
 from django.contrib.auth import views as auth_views
-from django.contrib.auth.views import PasswordResetView, LogoutView
-from .views import landing_page, profile_view, register
-from django.urls import include
+from django.contrib.auth.views import LogoutView, PasswordResetView
+from .views import landing_page, profile_view
 from django.contrib.auth.decorators import login_required
 
 urlpatterns = [
@@ -21,5 +20,4 @@ urlpatterns = [
     path('password_change/', auth_views.PasswordChangeView.as_view(), name='password_change'),
     path('password_change/done/', auth_views.PasswordChangeDoneView.as_view(), name='password_change_done'),
     path('profile/', profile_view, name='profile'),
-    path('register/', register, name='register'),
 ]

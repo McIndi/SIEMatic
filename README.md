@@ -217,7 +217,11 @@ docker-compose exec siematic-web python manage.py createsuperuser
 ```
 
 #### Create a user (for the agent)
-log into the admin page at `/admin/users/` and add a user. Default permissions will be created for the user. 
+log into the admin page at `/admin/users/` and add a user. Default permissions will be created for the user.
+
+The agent authenticates to the indexer as this user and needs permission to create events, which
+regular users do not have. Add the agent's user to the **`Agent`** group (created automatically on
+migrate) under `/admin/auth/group/` so its ingest requests to `/api/events/` aren't rejected with 403.
 
 #### View Logs for All Services
 ```bash
