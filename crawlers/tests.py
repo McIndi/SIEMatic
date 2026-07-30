@@ -2,7 +2,8 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
-from django.test import TestCase
+from django.core import mail
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -10,6 +11,9 @@ from events.models import Event
 
 from .forms import FindingTriageForm
 from .models import Finding
+from .alerting.email_alert import EmailAlert
+from .plugins.always_finding_crawler import AlwaysFindingCrawler
+from .plugins.data_retention_crawler import DataRetentionCrawler
 
 
 class FindingTriageViewTests(TestCase):
@@ -198,3 +202,64 @@ class FindingTriageFormTests(TestCase):
             list(FindingTriageForm().fields),
             ['status', 'assignee', 'notes'],
         )
+
+
+class CrawlerBehaviorTests(TestCase):
+    def setUp(self):
+        self.event = Event.objects.create(
+            host="target",
+            sourcetype="json",
+            data='{"message": "test"}',
+        )
+
+    def test_crawler_creates_finding_and_honors_realert_cooldown(self):
+        crawler = AlwaysFindingCrawler({"realert_cooldown": 300})
+
+        crawler.run()
+        crawler.run()
+
+        self.assertEqual(Finding.objects.count(), 1)
+        finding = Finding.objects.get()
+        self.assertEqual(finding.event, self.event)
+        self.assertEqual(finding.rule_name, "always_finding_test")
+
+    def test_retention_deletes_only_old_matching_rows(self):
+        old_match = self.event
+        old_other = Event.objects.create(host="keep", data="old")
+        recent_match = Event.objects.create(host="target", data="recent")
+        old_time = timezone.now() - timedelta(days=31)
+        Event.objects.filter(pk__in=[old_match.pk, old_other.pk]).update(
+            created=old_time,
+        )
+
+        crawler = DataRetentionCrawler({
+            "retention_days": 30,
+            "rules": [{
+                "split_by": "host",
+                "allow": ["target"],
+                "deny": [],
+            }],
+        })
+        crawler.run()
+
+        self.assertFalse(Event.objects.filter(pk=old_match.pk).exists())
+        self.assertTrue(Event.objects.filter(pk=old_other.pk).exists())
+        self.assertTrue(Event.objects.filter(pk=recent_match.pk).exists())
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="siematic@example.test",
+    )
+    def test_email_alert_uses_django_email_backend(self):
+        finding = Finding.objects.create(
+            event=self.event,
+            rule_name="Suspicious process",
+            description="A suspicious process started.",
+            severity="high",
+        )
+
+        EmailAlert({"recipients": ["soc@example.test"]}).send_alert(finding)
+
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["soc@example.test"])
+        self.assertIn("Suspicious process", mail.outbox[0].subject)

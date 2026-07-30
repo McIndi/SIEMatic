@@ -1,0 +1,13 @@
+[run]
+source = .
+
+[report]
+omit =
+    manage.py
+    bootstrap.py
+    */migrations/*
+    */tests.py
+    tools/*
+skip_covered = True
+show_missing = True
+fail_under = 45

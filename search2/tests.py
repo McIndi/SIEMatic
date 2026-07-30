@@ -3,15 +3,18 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import Client, TestCase
+from django.conf import settings
+from django.core.exceptions import PermissionDenied
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.test import APIClient
 
 from search2.api import Search2RunView
 from search2.commands.run_saved_search import RunSavedSearchCommand
+from search2.engine.core import run_pipeline
 from .models import SavedSearch
-from .utils import extract_field_names, debug_results_structure
+from .utils import debug_results_structure, debug_timestamp_fields, extract_field_names
 
 User = get_user_model()
 
@@ -152,67 +155,6 @@ class SearchApiThrottleTests(TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertEqual(third.status_code, 429)
 
-def debug_timestamp_fields(results, field1="created", field2="created_second"):
-    """
-    Debug function to compare two timestamp fields and show their actual values.
-    Use this to understand why charts might look identical.
-    """
-    if not results:
-        return "No results to debug"
-    
-    output = []
-    output.append(f"Debugging {field1} vs {field2}")
-    output.append("=" * 50)
-    
-    # Check first 10 results
-    for i, result in enumerate(results[:10]):
-        if not isinstance(result, dict):
-            continue
-            
-        val1 = result.get(field1, "MISSING")
-        val2 = result.get(field2, "MISSING")
-        
-        output.append(f"Row {i+1}:")
-        output.append(f"  {field1}: {val1} (type: {type(val1).__name__})")
-        output.append(f"  {field2}: {val2} (type: {type(val2).__name__})")
-        
-        # If both are strings, compare them
-        if isinstance(val1, str) and isinstance(val2, str):
-            if val1 == val2:
-                output.append("  → VALUES ARE IDENTICAL")
-            else:
-                output.append(f"  → Difference: {len(val1) - len(val2)} chars")
-        output.append("")
-    
-    return "\n".join(output)
-
-
-def debug_chart_data_processing(results, x_field, y_field, by_field=None):
-    """
-    Debug how chart data processing affects the values.
-    """
-    from search2.static.search2.chart import formatLabel, getByPath
-    
-    output = []
-    output.append(f"Chart Data Processing Debug")
-    output.append(f"X Field: {x_field}, Y Field: {y_field}, By Field: {by_field}")
-    output.append("=" * 60)
-    
-    # Process first few results like the chart does
-    for i, row in enumerate(results[:5]):
-        xValue = getByPath(row, x_field) if hasattr(row, 'get') else row.get(x_field)
-        yValue = getByPath(row, y_field) if hasattr(row, 'get') else row.get(y_field)
-        
-        if xValue is not None:
-            formatted_x = formatLabel(xValue)
-            output.append(f"Row {i+1}:")
-            output.append(f"  Raw X: {xValue} (type: {type(xValue).__name__})")
-            output.append(f"  Formatted X: {formatted_x}")
-            output.append(f"  Y: {yValue}")
-            output.append("")
-    
-    return "\n".join(output)
-
 class FieldExtractionTests(TestCase):
     """Tests for the extract_field_names utility function."""
     
@@ -301,8 +243,6 @@ class FieldExtractionTests(TestCase):
             }
         ]
         debug_output = debug_results_structure(results)
-        print(f"Debug output:\n{debug_output}")
-        
         # The debug function should show us the structure
         self.assertIn("cpu_percent", debug_output)
         self.assertIn("host", debug_output)
@@ -391,3 +331,92 @@ class ChartComponentTests(TestCase):
         
         self.assertIn("available_fields", context)
         self.assertEqual(context["available_fields"], [])
+
+
+class PipelineCommandTests(TestCase):
+    def setUp(self):
+        self.rows = [
+            {"host": "beta", "value": 2, "tags": {"kind": "server"}},
+            {"host": "alpha", "value": 1, "tags": {"kind": "client"}},
+            {"host": "alpha", "value": 3, "tags": {"kind": "client"}},
+        ]
+
+    def test_record_pipeline_commands(self):
+        cases = {
+            "filter --condition='host=\"alpha\"'": 2,
+            "sort --fields='[\"host\", \"value\"]'": 3,
+            "head --n=1": 1,
+            "tail --n=1": 1,
+            "unique --fields='[\"host\"]'": 2,
+            "rename --mapping='{\"host\": \"machine\"}'": 3,
+            "groupby --keys='[\"host\"]' --out=total": 2,
+            "stats --aggregations='[\"count\"]' --by='[\"host\"]'": 2,
+            "annotate --set='answer=1+2'": 3,
+        }
+        for query, expected_length in cases.items():
+            with self.subTest(command=query.split()[0]):
+                result = run_pipeline(self.rows, query)
+                self.assertEqual(len(result), expected_length)
+
+    def test_explode_and_to_dataframe_commands(self):
+        result = run_pipeline(
+            self.rows,
+            "explode --field=tags | to_dataframe",
+        )
+        self.assertEqual(
+            list(result["tags_kind"]),
+            ["server", "client", "client"],
+        )
+
+    def test_pipeline_substitutes_environment_parameters(self):
+        result = run_pipeline(
+            self.rows,
+            "head --n={row_limit:d}",
+            environ={"row_limit": 2},
+        )
+        self.assertEqual(len(result), 2)
+
+    @patch("search2.commands.join.JoinCmd._get_right_df")
+    def test_join_command(self, get_right_df):
+        import pandas as pd
+
+        get_right_df.return_value = pd.DataFrame([
+            {"host": "alpha", "owner": "soc"},
+        ])
+        result = run_pipeline(
+            self.rows,
+            "join --on='[\"host\"]' --how=inner",
+        )
+        self.assertEqual(len(result), 2)
+        self.assertEqual(set(result["owner"]), {"soc"})
+
+
+class SearchAuthorizationAndLimitsTests(TestCase):
+    def setUp(self):
+        from events.models import Event
+
+        self.user = User.objects.create_user(
+            username="pipeline-user",
+            password="testpass",
+        )
+        self.request = SimpleNamespace(user=self.user)
+        for number in range(3):
+            Event.objects.create(
+                data=f'{{"number": {number}}}',
+                sourcetype="json",
+            )
+
+    def test_sensitive_models_are_denied(self):
+        for model in ("project.CustomUser", "search2.SavedSearch"):
+            with self.subTest(model=model), self.assertRaises(PermissionDenied):
+                run_pipeline(
+                    None,
+                    f"search --model={model}",
+                    request=self.request,
+                )
+
+    def test_max_rows_truncates_queryset_results(self):
+        search_settings = {**settings.SIEMATIC_SEARCH, "MAX_ROWS": 2}
+        with override_settings(SIEMATIC_SEARCH=search_settings):
+            result = run_pipeline(None, "search", request=self.request)
+        self.assertEqual(len(result), 2)

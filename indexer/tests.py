@@ -9,10 +9,18 @@ from pathlib import Path
 import sys
 
 from asgiref.sync import async_to_sync
+from channels.testing import WebsocketCommunicator
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 from django.test import SimpleTestCase, TestCase
 
 from events.models import Event
-from indexer.consumers import _build_event, _bulk_create_events, create_events
+from indexer.consumers import (
+    EventConsumer,
+    _build_event,
+    _bulk_create_events,
+    create_events,
+)
 from indexer.management.commands.indexer import build_daphne_command
 from tools.gen_dev_cert import generate_certificate
 
@@ -76,3 +84,32 @@ class WebSocketBatchIngestTests(TestCase):
         self.assertEqual(len(events), 3)
         self.assertEqual(Event.objects.count(), 3)
         self.assertEqual(events[1].extracted_fields, {'data': 'not-json'})
+
+
+class WebSocketAuthenticationTests(TestCase):
+    def test_authenticated_connection_is_accepted(self):
+        user = get_user_model().objects.create_user(username="agent")
+
+        async def exercise_connection():
+            communicator = WebsocketCommunicator(
+                EventConsumer.as_asgi(),
+                "/indexer/",
+            )
+            communicator.scope["user"] = user
+            connected, _ = await communicator.connect()
+            if connected:
+                await communicator.disconnect()
+            return connected
+
+        self.assertTrue(async_to_sync(exercise_connection)())
+
+    def test_anonymous_connection_is_rejected(self):
+        communicator = WebsocketCommunicator(
+            EventConsumer.as_asgi(),
+            "/indexer/",
+        )
+        communicator.scope["user"] = AnonymousUser()
+
+        connected, _ = async_to_sync(communicator.connect)()
+
+        self.assertFalse(connected)

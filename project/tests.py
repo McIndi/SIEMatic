@@ -40,6 +40,25 @@ class DefaultPermissionTests(TestCase):
             },
         )
 
+        group = user.groups.get(name="Registered User")
+        permission_keys = set(
+            group.permissions.values_list(
+                "content_type__app_label",
+                "content_type__model",
+                "codename",
+            )
+        )
+        self.assertSetEqual(
+            permission_keys,
+            {
+                ("events", "event", "view_event"),
+                ("dashboarding", "dashboard", "view_dashboard"),
+                ("dashboarding", "panel", "view_panel"),
+                ("crawlers", "finding", "view_finding"),
+                ("search2", "savedsearch", "view_savedsearch"),
+            },
+        )
+
 
 class UserProfileTests(TestCase):
     """

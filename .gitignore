@@ -25,3 +25,8 @@ dist/
 
 .env
 certs/
+
+# Test coverage
+.coverage
+coverage.xml
+htmlcov/

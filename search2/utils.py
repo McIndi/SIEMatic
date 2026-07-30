@@ -606,3 +606,31 @@ def debug_results_structure(results):
     logger.debug("Results structure analysis completed")
     logger.debug("debug_results_structure completed in %.3fs", time.time() - start_time)
     return structure
+
+
+def debug_timestamp_fields(results, field1="created", field2="created_second"):
+    """Return a readable comparison of two timestamp fields."""
+    if not results:
+        return "No results to debug"
+
+    output = [f"Debugging {field1} vs {field2}", "=" * 50]
+    for index, result in enumerate(results[:10]):
+        if not isinstance(result, dict):
+            continue
+        value1 = result.get(field1, "MISSING")
+        value2 = result.get(field2, "MISSING")
+        output.extend([
+            f"Row {index + 1}:",
+            f"  {field1}: {value1} (type: {type(value1).__name__})",
+            f"  {field2}: {value2} (type: {type(value2).__name__})",
+        ])
+        if isinstance(value1, str) and isinstance(value2, str):
+            if value1 == value2:
+                output.append("  \N{RIGHTWARDS ARROW} VALUES ARE IDENTICAL")
+            else:
+                output.append(
+                    f"  \N{RIGHTWARDS ARROW} Difference: "
+                    f"{len(value1) - len(value2)} chars"
+                )
+        output.append("")
+    return "\n".join(output)

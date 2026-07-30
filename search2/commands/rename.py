@@ -27,14 +27,14 @@ class RenameCmd:
 
     def run_df(self, df, args, ctx):
         """Rename columns using pandas rename."""
-        mapping = parse_literal(args.mapping)
+        mapping = parse_literal(args.mapping, "--mapping")
         if not isinstance(mapping, dict):
             raise ValueError("--mapping must be a dictionary")
         return df.rename(columns=mapping)
 
     def run_records(self, rows, args, ctx):
         """Rename columns using Python dict comprehension."""
-        mapping = parse_literal(args.mapping)
+        mapping = parse_literal(args.mapping, "--mapping")
         if not isinstance(mapping, dict):
             raise ValueError("--mapping must be a dictionary")
 

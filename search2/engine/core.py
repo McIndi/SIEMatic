@@ -73,7 +73,14 @@ def run_pipeline(data: Any, query: str, *, request=None, environ=None) -> Any:
         logger.debug("Using command class: %s", cmd.__class__.__name__)
         parser = _mk_parser(cmd)
         for i, argv in enumerate(stage.argv):
-            stage.argv[i] = argv.format(**environ)
+            stripped_argv = argv.strip()
+            argument_value = stripped_argv.partition("=")[2] or stripped_argv
+            is_mapping_literal = (
+                argument_value.startswith(('{"', "{'"))
+                and argument_value.endswith("}")
+            )
+            if not is_mapping_literal:
+                stage.argv[i] = argv.format(**environ)
         logger.debug("Parsing arguments: %s", stage.argv)
         args = parser.parse_args(stage.argv)
         logger.debug("Parsed arguments: %s", args)
@@ -91,7 +98,14 @@ def run_pipeline(data: Any, query: str, *, request=None, environ=None) -> Any:
             kind = None
     logger.info("Pipeline completed. Final result type: %s", type(current))
     max_rows = getattr(settings, "SIEMATIC_SEARCH", {}).get("MAX_ROWS", 10_000)
-    if max_rows and isinstance(current, list) and len(current) > max_rows:
-        logger.warning("Result set exceeds MAX_ROWS (%d). Truncating results.", max_rows)
-        current = current[:max_rows]
+    if max_rows:
+        if isinstance(current, list) and len(current) > max_rows:
+            logger.warning(
+                "Result set exceeds MAX_ROWS (%d). Truncating results.", max_rows
+            )
+            current = current[:max_rows]
+        elif hasattr(current, "model") and hasattr(current, "values"):
+            current = current[:max_rows]
+        elif getattr(current.__class__, "__name__", "") in ("DataFrame", "Series"):
+            current = current.head(max_rows)
     return current
