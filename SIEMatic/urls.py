@@ -50,6 +50,7 @@ else:
         path('accounts/', include('django.contrib.auth.urls')),
         path('search2/', include('search2.urls')),
         path('dashboarding/', include('dashboarding.urls')),
+        path('findings/', include('crawlers.urls')),
     ]
     if settings.DEBUG and importlib.util.find_spec('debug_toolbar'):
         urlpatterns += [

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Finding {{ finding.pk }} | SIEMatic{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2 class="mb-1">{{ finding.rule_name }}</h2>
+      <span class="badge text-bg-secondary">{{ finding.get_status_display }}</span>
+      <span class="badge text-bg-{% if finding.severity == 'critical' %}danger{% elif finding.severity == 'high' %}warning{% elif finding.severity == 'medium' %}info{% else %}secondary{% endif %}">{{ finding.get_severity_display }}</span>
+    </div>
+    <div>
+      <a href="{% url 'crawlers:finding_list' %}" class="btn btn-secondary">Back to findings</a>
+      {% if user.is_staff %}<a href="{% url 'crawlers:finding_delete' finding.pk %}" class="btn btn-danger">Delete</a>{% endif %}
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <div class="card mb-4">
+        <div class="card-header">Finding</div>
+        <div class="card-body">
+          <dl class="row mb-0">
+            <dt class="col-sm-3">Description</dt>
+            <dd class="col-sm-9">{{ finding.description|linebreaksbr }}</dd>
+            <dt class="col-sm-3">MITRE tactic</dt>
+            <dd class="col-sm-9">{{ finding.mitre_tactic|default:"—" }}</dd>
+            <dt class="col-sm-3">MITRE technique</dt>
+            <dd class="col-sm-9">{{ finding.mitre_technique|default:"—" }}</dd>
+            <dt class="col-sm-3">Created</dt>
+            <dd class="col-sm-9">{{ finding.created_at }}</dd>
+            <dt class="col-sm-3">Updated</dt>
+            <dd class="col-sm-9">{{ finding.updated_at }}</dd>
+          </dl>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Linked event #{{ finding.event_id }}</div>
+        <div class="card-body">
+          <dl class="row">
+            <dt class="col-sm-3">Index</dt><dd class="col-sm-9">{{ finding.event.index }}</dd>
+            <dt class="col-sm-3">Source type</dt><dd class="col-sm-9">{{ finding.event.sourcetype }}</dd>
+            <dt class="col-sm-3">Source</dt><dd class="col-sm-9">{{ finding.event.source }}</dd>
+            <dt class="col-sm-3">Host</dt><dd class="col-sm-9">{{ finding.event.host }}</dd>
+            <dt class="col-sm-3">Created</dt><dd class="col-sm-9">{{ finding.event.created }}</dd>
+          </dl>
+          <h6>Event data</h6>
+          <pre class="border rounded p-3 text-wrap">{{ finding.event.data }}</pre>
+          <h6>Extracted fields</h6>
+          <pre class="border rounded p-3 text-wrap">{{ finding.event.extracted_fields|pprint }}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-header">Triage</div>
+        <div class="card-body">
+          {% if perms.crawlers.change_finding %}
+          <form method="post" action="{% url 'crawlers:finding_update' finding.pk %}">
+            {% csrf_token %}
+            {{ triage_form|crispy }}
+            <button type="submit" class="btn btn-primary">Save triage</button>
+          </form>
+          {% else %}
+          <dl class="mb-0">
+            <dt>Status</dt><dd>{{ finding.get_status_display }}</dd>
+            <dt>Assignee</dt><dd>{{ finding.assignee|default:"Unassigned" }}</dd>
+            <dt>Notes</dt><dd>{{ finding.notes|default:"—"|linebreaksbr }}</dd>
+          </dl>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

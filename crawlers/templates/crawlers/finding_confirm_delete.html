@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Delete finding | SIEMatic{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+      <div class="card border-danger shadow-sm">
+        <div class="card-body">
+          <h2 class="text-danger mb-3">Delete Finding</h2>
+          <p>Are you sure you want to delete <strong>{{ finding.rule_name }}</strong>?</p>
+          <p class="text-muted">This does not delete the linked event.</p>
+          <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">Delete</button>
+            <a href="{% url 'crawlers:finding_detail' finding.pk %}" class="btn btn-secondary ms-2">Cancel</a>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
