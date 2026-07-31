@@ -8,6 +8,36 @@ env:
   DJANGO_SECRET_KEY: ci-secret-key-for-siematic-workflow-only-2026-07-28-keep-out-of-prod
 
 jobs:
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-docs.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-docs.txt
+
+      - name: Generate OpenAPI schema
+        run: python manage.py spectacular --file docs/reference/openapi.yaml --settings SIEMatic.settings.web
+
+      - name: Check environment variable reference
+        run: python tools/docs/check_env_reference.py
+
+      - name: Build documentation
+        run: mkdocs build --strict
+
   test:
     runs-on: ubuntu-latest
     strategy:

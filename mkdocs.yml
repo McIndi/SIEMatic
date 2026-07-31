@@ -1,0 +1,73 @@
+site_name: SIEMatic
+site_description: Documentation for the SIEMatic observability platform
+site_url: https://mcindi.com/siematic/
+repo_url: https://github.com/mcindi/SIEMatic
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - tools/docs/generate_search_command_reference.py
+  - literate-nav
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_options:
+              warn_missing_types: false
+
+markdown_extensions:
+  - admonition
+
+nav:
+  - Overview: index.md
+  - Quickstart: quickstart.md
+  - Operations Guide:
+      - Overview: operations/index.md
+      - Deploying: operations/deploying.md
+      - Upgrading: operations/upgrading.md
+      - User and Permission Management: operations/user-and-permission-management.md
+      - Crawler Configuration: operations/crawler-configuration.md
+      - Findings Triage: operations/findings-triage.md
+      - Alerting: operations/alerting.md
+      - Data Retention: operations/data-retention.md
+      - Scaling and Performance: operations/scaling-and-performance.md
+      - Backup and Restore: operations/backup-and-restore.md
+      - Troubleshooting: operations/troubleshooting.md
+  - Search and Dashboards:
+      - Overview: search-and-dashboards/index.md
+      - Search Language: search-and-dashboards/search-language.md
+      - Saved Searches and Sharing: search-and-dashboards/saved-searches-and-sharing.md
+      - Building Dashboards: search-and-dashboards/building-dashboards.md
+  - Developer Guide:
+      - Overview: developer/index.md
+      - Writing a Search Command: developer/writing-a-search-command.md
+      - Writing a Crawler Plugin: developer/writing-a-crawler-plugin.md
+      - Writing an Agent Plugin: developer/writing-an-agent-plugin.md
+      - Testing Conventions: developer/testing-conventions.md
+      - Contributing: developer/contributing.md
+  - Reference:
+      - Overview: reference/index.md
+      - Search Commands: reference/search-commands.md
+      - REST API: reference/rest-api.md
+      - Settings and Environment Variables: reference/settings-and-env-vars.md
+      - Python API: reference/python-api.md
+      - Known Limitations: reference/known-limitations.md
+  - History:
+      - Path to MVP: history/plan_for_mvp.md
+  - Changelog: changelog.md

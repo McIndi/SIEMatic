@@ -1,4 +1,13 @@
+---
+title: Path to MVP (Archived)
+---
+
 # SIEMatic — Path to MVP
+
+!!! note "Historical document"
+    This completed implementation plan is retained for project history. It is
+    not the current roadmap. Outstanding constraints are tracked in
+    [Known Limitations](../reference/known-limitations.md).
 
 ## Context
 
@@ -74,7 +83,9 @@ Options for when you *do* need fan-out (live tail, pushing new findings to open 
 5. **SMTP email** (the MVP slice of item 18): drive `EMAIL_BACKEND`/`EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_HOST_USER`/`EMAIL_HOST_PASSWORD`/`EMAIL_USE_TLS`/`DEFAULT_FROM_EMAIL` from env, defaulting to the filebased backend. Today `crawler.py` hardcodes filebased, so alerting silently never sends. Alert *recipients* stay in `ALERTING_CONFIGS` for MVP.
 6. Extend `.env.example` and the compose `environment:` blocks with every new variable.
 
-**Deferred to post-MVP (item 18):** an `AlertSubscription` model (user, severity threshold, rule-name filter, enabled) that `EmailAlert.send_alert` consults for recipients, plus a general DB-backed config table. Track as the first post-MVP feature; do not start it during MVP.
+The database-backed alert-subscription work deferred by this plan remains
+outstanding and is now tracked in
+[Known Limitations](../reference/known-limitations.md).
 
 ---
 
