@@ -8,14 +8,19 @@ from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.forms.models import model_to_dict
 from django.test import TestCase, Client
 from django.urls import NoReverseMatch, reverse
 
+from dashboarding.models import Dashboard, Panel
 from project.management.commands.rundev import (
     Command as RundevCommand,
     DEV_SUPERUSER_USERNAME,
 )
+from search2.engine.core import parse_pipeline
+from search2.models import SavedSearch
 
 from .models import UserProfile
 
@@ -74,6 +79,63 @@ class RundevSuperuserTests(TestCase):
 
         self.assertIs(result, process)
         process_job.assign.assert_called_once_with(process)
+
+
+class SeedDefaultContentTests(TestCase):
+    def setUp(self):
+        self.owner = get_user_model().objects.create_superuser(
+            username=DEV_SUPERUSER_USERNAME,
+            email='admin@example.invalid',
+            password='testpass',
+        )
+
+    def test_seed_creates_expected_searches_and_dashboards(self):
+        call_command('seed_default_content', owner=DEV_SUPERUSER_USERNAME)
+
+        searches = SavedSearch.objects.filter(owner=self.owner)
+        self.assertGreater(searches.count(), 0)
+        for search in searches:
+            self.assertTrue(search.is_public)
+            # Every seeded query must at least be parseable as a pipeline.
+            self.assertTrue(parse_pipeline(search.query))
+
+        dashboards = Dashboard.objects.filter(created_by=self.owner)
+        self.assertGreater(dashboards.count(), 0)
+        for dashboard in dashboards:
+            panels = Panel.objects.filter(dashboard=dashboard)
+            self.assertGreater(panels.count(), 0)
+            for panel in panels:
+                self.assertTrue(parse_pipeline(panel.search))
+                if panel.visualization_type == 'chart':
+                    self.assertTrue(panel.x_field)
+                    self.assertTrue(panel.y_field)
+
+    def test_seed_is_idempotent(self):
+        call_command('seed_default_content', owner=DEV_SUPERUSER_USERNAME)
+        search_count = SavedSearch.objects.filter(owner=self.owner).count()
+        dashboard_count = Dashboard.objects.filter(created_by=self.owner).count()
+        panel_count = Panel.objects.filter(dashboard__created_by=self.owner).count()
+
+        call_command('seed_default_content', owner=DEV_SUPERUSER_USERNAME)
+
+        self.assertEqual(SavedSearch.objects.filter(owner=self.owner).count(), search_count)
+        self.assertEqual(Dashboard.objects.filter(created_by=self.owner).count(), dashboard_count)
+        self.assertEqual(Panel.objects.filter(dashboard__created_by=self.owner).count(), panel_count)
+
+    def test_seed_does_not_overwrite_edited_defaults(self):
+        call_command('seed_default_content', owner=DEV_SUPERUSER_USERNAME)
+        search = SavedSearch.objects.filter(owner=self.owner).first()
+        search.query = 'search --limit=1'
+        search.save(update_fields=['query'])
+
+        call_command('seed_default_content', owner=DEV_SUPERUSER_USERNAME)
+
+        search.refresh_from_db()
+        self.assertEqual(search.query, 'search --limit=1')
+
+    def test_seed_requires_existing_owner(self):
+        with self.assertRaises(CommandError):
+            call_command('seed_default_content', owner='no-such-user')
 
 
 class UserRegistrationTests(TestCase):

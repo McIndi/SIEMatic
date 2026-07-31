@@ -56,8 +56,21 @@ def detect_kind(data: Any) -> Optional[str]:
         return "records"
     raise TypeError(f"Unsupported dataset type: {type(data)}")
 
+class PipelineArgumentError(Exception):
+    """Raised for a pipeline stage's invalid arguments, in place of argparse's default
+    behavior of printing usage and calling ``sys.exit()``. A ``SystemExit`` raised while
+    handling a request is not caught by an ``except Exception`` in a view, so it would
+    otherwise propagate out of the request thread and take the whole server down.
+    """
+
+
+class _PipelineArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        raise PipelineArgumentError(f"{self.format_usage()}{self.prog}: error: {message}")
+
+
 def _mk_parser(cmd_obj):
-    p = argparse.ArgumentParser(prog=cmd_obj.name, add_help=False)
+    p = _PipelineArgumentParser(prog=cmd_obj.name, add_help=False)
     cmd_obj.add_arguments(p)
     return p
 

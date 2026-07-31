@@ -12,9 +12,9 @@ from rest_framework.test import APIClient
 
 from search2.api import Search2RunView
 from search2.commands.run_saved_search import RunSavedSearchCommand
-from search2.engine.core import run_pipeline
+from search2.engine.core import PipelineArgumentError, run_pipeline
 from .models import SavedSearch
-from .utils import debug_results_structure, debug_timestamp_fields, extract_field_names
+from .utils import coerce_to_list_of_dicts, debug_results_structure, debug_timestamp_fields, extract_field_names
 
 User = get_user_model()
 
@@ -154,6 +154,70 @@ class SearchApiThrottleTests(TestCase):
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
         self.assertEqual(third.status_code, 429)
+
+class PipelineArgumentErrorTests(TestCase):
+    """A malformed pipeline stage must not be able to take the whole server down.
+
+    argparse's default error handling calls ``sys.exit()``, raising ``SystemExit``.
+    Since ``SystemExit`` is a ``BaseException`` and not an ``Exception``, it slips
+    past an ``except Exception`` in a view and crashes the request-handling process.
+    """
+
+    def test_missing_required_argument_raises_pipeline_error_not_systemexit(self):
+        user = User.objects.create_user(username='groupbyerroruser', password='testpass')
+        request = SimpleNamespace(user=user)
+        with self.assertRaises(PipelineArgumentError):
+            run_pipeline(None, "search --limit=1 | groupby", request=request)
+
+    def test_unrecognized_argument_raises_pipeline_error_not_systemexit(self):
+        with self.assertRaises(PipelineArgumentError):
+            run_pipeline(None, "search --not-a-real-flag=1")
+
+    def test_api_returns_400_instead_of_crashing(self):
+        user = User.objects.create_user(username='pipelineerroruser', password='testpass')
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.post(
+            reverse('search2_run_api'), {'query': 'search --limit=1 | groupby'}, format='json'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('error', response.json())
+
+
+class CoerceGroupedByAnnotationTests(TestCase):
+    """coerce_to_list_of_dicts must not re-expand a values() queryset grouped by
+    an annotated/computed field (e.g. a TruncMinute() bucket) back into full
+    model rows.
+
+    ``query.values_select`` only tracks concrete-column selections; grouping by
+    an annotation instead populates ``query.annotation_select``, leaving
+    ``values_select`` empty even though the queryset already yields dicts. A
+    truthiness check on ``values_select`` alone treated that case as "not yet a
+    values() queryset" and called ``.values()`` again with no field list, which
+    resets the restriction and returns every model field plus the annotations.
+    """
+
+    def setUp(self):
+        from events.models import Event
+
+        self.user = User.objects.create_user(username='groupbyannotationuser', password='testpass')
+        self.request = SimpleNamespace(user=self.user)
+        Event.objects.create(index='sysmon', data='{"cpu_percent": 10}', sourcetype='json')
+        Event.objects.create(index='sysmon', data='{"cpu_percent": 20}', sourcetype='json')
+
+    def test_groupby_on_annotated_field_returns_grouped_rows(self):
+        result = run_pipeline(
+            None,
+            "search --filter='index=\"sysmon\"' | "
+            "annotate --set='minute=TruncMinute(created)' | "
+            "groupby --keys='[\"minute\"]'",
+            request=self.request,
+        )
+        rows = coerce_to_list_of_dicts(result)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(set(rows[0].keys()), {'minute', 'count'})
+        self.assertEqual(rows[0]['count'], 2)
+
 
 class FieldExtractionTests(TestCase):
     """Tests for the extract_field_names utility function."""

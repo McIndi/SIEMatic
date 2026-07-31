@@ -3,7 +3,7 @@ import logging
 import time
 from itertools import chain
 from types import GeneratorType
-from django.db.models.query import QuerySet
+from django.db.models.query import QuerySet, ValuesIterable
 import statistics
 from collections import Counter
 from datetime import datetime, date
@@ -139,8 +139,18 @@ def coerce_to_list_of_dicts(results, serializer_cls=None):
                 logger.exception("Serializer failed, falling back to optimized values() conversion")
 
         # Try fast path: if already values queryset, just list it; else use values()
+        #
+        # `query.values_select` only tracks concrete-column selections. A
+        # `.values()` call that groups by an annotated/computed field (e.g. a
+        # TruncMinute() bucket) or by an aggregate puts those names in
+        # `annotation_select` instead, leaving `values_select` empty even
+        # though the queryset already yields dicts. Checking `_iterable_class`
+        # is how Django itself distinguishes a `.values()` queryset, so it
+        # covers both cases; the wrong check previously caused a second,
+        # unrestricted `.values()` call that re-expanded grouped/aggregated
+        # results back to full model rows.
         try:
-            if results.query.values_select:
+            if results._iterable_class is ValuesIterable:
                 vals = list(results)
             else:
                 vals = list(results.values())

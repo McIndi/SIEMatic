@@ -168,6 +168,9 @@ class Command(BaseCommand):
             f'Development superuser credentials written to {credentials_path}'
         ))
 
+        self.stdout.write('Seeding default saved searches and dashboards...')
+        call_command('seed_default_content', owner=DEV_SUPERUSER_USERNAME, verbosity=options['verbosity'])
+
         self.stdout.write('Collecting static assets...')
         call_command('collectstatic', interactive=False, verbosity=0)
 
@@ -213,7 +216,14 @@ class Command(BaseCommand):
                 'CHERRYPY_SSL': 'True',
                 'CHERRYPY_SSL_CERT': str(cert_path),
                 'CHERRYPY_SSL_KEY': str(key_path),
-                'CHERRYPY_AUTORELOAD': 'True',
+                # CherryPy's own autoreloader doesn't restart in place on
+                # Windows (no execv-style process replacement); it spawns a
+                # detached replacement process and lets this one exit. rundev
+                # already supervises this process externally via _supervise(),
+                # so that exit looks like a crash and takes indexer/agent down
+                # with it. rundev has no code-reload story of its own: restart
+                # rundev after backend changes.
+                'CHERRYPY_AUTORELOAD': 'False',
             }
             web = self._start('web', ['serve'], web_env, project_root, process_job)
             processes.append(('web', web))
