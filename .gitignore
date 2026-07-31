@@ -30,3 +30,6 @@ certs/
 .coverage
 coverage.xml
 htmlcov/
+
+# MkDocs build output
+/site/
