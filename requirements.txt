@@ -4,6 +4,7 @@ whitenoise
 cherrypy
 crispy-bootstrap5
 djangorestframework
+drf-spectacular
 markdown
 django-filter
 channels
