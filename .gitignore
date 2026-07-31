@@ -25,6 +25,7 @@ dist/
 
 .env
 certs/
+/rundev-superuser.txt
 
 # Test coverage
 .coverage

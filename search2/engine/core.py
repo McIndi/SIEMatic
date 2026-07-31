@@ -12,6 +12,29 @@ from .context import Context
 
 logger = logging.getLogger(__name__)
 
+# Placeholders supplied by the pipeline engine for every query.  Callers that
+# collect user-defined parameters should not present or override these fields.
+PIPELINE_BUILTIN_FIELDS = frozenset({
+    'now',
+    'today',
+    'yesterday',
+    'this_minute',
+    'last_minute',
+    'this_hour',
+    'last_hour',
+    'this_day',
+    'last_day',
+    'this_week',
+    'last_week',
+    'this_month',
+    'last_month',
+    'this_year',
+    'last_year',
+    'last_7_days',
+    'last_30_days',
+    'timezone',
+})
+
 @dataclass
 class Stage:
     cmd: str

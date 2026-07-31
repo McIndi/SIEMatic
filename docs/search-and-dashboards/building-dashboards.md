@@ -30,7 +30,9 @@ workflow.
 Panel queries can use Python format placeholders. SIEMatic collects placeholders
 across the panels and displays a form when the dashboard opens. A format suffix
 ending in `d` creates an integer input. The suffix `f`, `e`, or `g` creates a
-floating-point input. Other placeholders are text.
+floating-point input. Other placeholders are text. Built-in search time values,
+such as `{last_hour}` and `{last_7_days}`, are resolved by the pipeline engine
+and do not appear as dashboard parameters.
 
 For example, this query prompts for a numeric limit:
 

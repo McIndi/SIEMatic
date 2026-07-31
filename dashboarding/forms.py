@@ -1,6 +1,7 @@
 from django import forms
 from django.forms import inlineformset_factory, modelformset_factory
 from .models import Dashboard, Panel
+from search2.engine.core import PIPELINE_BUILTIN_FIELDS
 
 class PanelForm(forms.ModelForm):
     class Meta:
@@ -39,6 +40,11 @@ class DashboardParamsForm(forms.Form):
         for panel in dashboard.panels.all():
             if panel.search:
                 specs = format_kwargs_spec(panel.search)
+                specs = {
+                    name: field_type
+                    for name, field_type in specs.items()
+                    if name not in PIPELINE_BUILTIN_FIELDS
+                }
                 placeholders.update(specs)
 
         # Add fields to the form and set initial values from dashboard defaults

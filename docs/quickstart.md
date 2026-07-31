@@ -46,15 +46,23 @@ python manage.py rundev
 
 No `.env` file is required. The command uses `db.sqlite3`, applies migrations,
 collects static assets, and creates `certs/siematic.crt` and
-`certs/siematic.key` when they are absent. It then supervises:
+`certs/siematic.key` when they are absent. It also creates or updates the
+`siematic-admin` development superuser with a random password. The command
+writes the credentials to `rundev-superuser.txt` in the repository root. It
+then supervises:
 
 - the HTTPS web application at `https://localhost:8000/`
 - the TLS WebSocket indexer at `https://localhost:8001/`
 - an authenticated agent running the cross-platform sysmon plugin.
 
 The browser will warn about the self-signed development certificate. After
-accepting it, sign in and allow several seconds for CPU, memory, disk, and
-network events to become searchable. Press Ctrl+C to stop the process tree.
+accepting it, use the username and password in `rundev-superuser.txt` to sign
+in. Allow several seconds for CPU, memory, disk, and network events to become
+searchable. Press Ctrl+C to stop the process tree.
+
+`rundev-superuser.txt` is ignored by Git and is overwritten with a newly
+generated password each time `rundev` starts. Treat it as a secret and use this
+account only in the local development environment.
 
 When either port is occupied, choose alternatives:
 
@@ -62,16 +70,10 @@ When either port is occupied, choose alternatives:
 python manage.py rundev --web-port 8443 --indexer-port 8444
 ```
 
-## Create the first administrator
+## Open the administration site
 
-Stop the stack, then run:
-
-```bash
-python manage.py rundev --create-superuser
-```
-
-After the Django prompts, `rundev` starts normally. Sign in at
-`https://localhost:8000/admin/`. See [User and Permission
+Sign in at `https://localhost:8000/admin/` with the generated credentials in
+`rundev-superuser.txt`. See [User and Permission
 Management](operations/user-and-permission-management.md) before provisioning
 ordinary users or agent service accounts.
 

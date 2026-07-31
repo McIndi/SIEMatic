@@ -7,6 +7,13 @@ title: User and Permission Management
 SIEMatic uses Django users, groups, and model permissions. Public
 self-registration is disabled. Administrators provision every account.
 
+For local development, `python manage.py rundev` creates the reserved
+`siematic-admin` superuser automatically. Its random password is in
+`rundev-superuser.txt` at the repository root and changes every time `rundev`
+starts. This file and account are for local development only. Production
+administrators must be provisioned separately as described in
+[Deploying](deploying.md).
+
 ## Built-in groups
 
 Migrations create and maintain two groups:

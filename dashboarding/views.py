@@ -9,7 +9,7 @@ from django.views.decorators.csrf import csrf_exempt
 from .utils import format_kwargs_spec
 from .forms import DashboardForm, PanelFormSet, DashboardParamsForm
 from .models import Dashboard, Panel
-from search2.engine.core import run_pipeline
+from search2.engine.core import PIPELINE_BUILTIN_FIELDS, run_pipeline
 from search2.utils import coerce_to_list_of_dicts
 import logging
 import json
@@ -71,15 +71,19 @@ def dashboard_detail(request, pk):
         if params_form.is_valid():
             # Process the form and run searches with params
             params = params_form.cleaned_data
-            # For each panel, format the search with params and run pipeline
+            # Let the pipeline engine format both dashboard parameters and its
+            # built-in time placeholders in one pass.
             panel_data = []
             for panel in dashboard.panels.all():
                 search_query = panel.search
                 if search_query:
                     try:
-                        formatted_query = search_query.format(**params)
-                        # Run the pipeline (assuming initial data is Event queryset)
-                        result = run_pipeline(None, formatted_query, request=request)
+                        result = run_pipeline(
+                            None,
+                            search_query,
+                            request=request,
+                            environ=params,
+                        )
                         result = coerce_to_list_of_dicts(result)
                         panel_data.append({
                             'panel': panel,
@@ -139,8 +143,14 @@ def panel_preview(request):
         
         # Detect placeholders and provide defaults
         specs = format_kwargs_spec(search)
-        environ = defaults.copy()
+        environ = {
+            name: value
+            for name, value in defaults.items()
+            if name not in PIPELINE_BUILTIN_FIELDS
+        }
         for name, field_type in specs.items():
+            if name in PIPELINE_BUILTIN_FIELDS:
+                continue
             if name not in environ:
                 if field_type == int:
                     environ[name] = 10

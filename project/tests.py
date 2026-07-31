@@ -3,11 +3,78 @@ Tests for the project app.
 
 This module contains unit tests for profiles, authentication, and default permissions.
 """
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import Mock, patch
+
+from django.contrib.auth import get_user_model
 from django.forms.models import model_to_dict
 from django.test import TestCase, Client
 from django.urls import NoReverseMatch, reverse
-from django.contrib.auth import get_user_model
+
+from project.management.commands.rundev import (
+    Command as RundevCommand,
+    DEV_SUPERUSER_USERNAME,
+)
+
 from .models import UserProfile
+
+
+class RundevSuperuserTests(TestCase):
+    def test_configure_superuser_creates_and_rotates_development_account(self):
+        command = RundevCommand()
+
+        command._configure_superuser('first-password')
+        user = get_user_model().objects.get(username=DEV_SUPERUSER_USERNAME)
+
+        self.assertTrue(user.is_active)
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.check_password('first-password'))
+
+        command._configure_superuser('second-password')
+        user.refresh_from_db()
+
+        self.assertEqual(
+            get_user_model().objects.filter(
+                username=DEV_SUPERUSER_USERNAME,
+            ).count(),
+            1,
+        )
+        self.assertFalse(user.check_password('first-password'))
+        self.assertTrue(user.check_password('second-password'))
+
+    def test_write_superuser_credentials_records_login_details(self):
+        command = RundevCommand()
+
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'credentials.txt'
+            command._write_superuser_credentials(path, 'random-password', 8443)
+
+            self.assertEqual(
+                path.read_text(encoding='utf-8'),
+                'URL=https://localhost:8443/admin/\n'
+                f'USERNAME={DEV_SUPERUSER_USERNAME}\n'
+                'PASSWORD=random-password\n',
+            )
+
+    @patch('project.management.commands.rundev.subprocess.Popen')
+    def test_start_assigns_child_to_process_job(self, popen):
+        process = popen.return_value
+        process_job = Mock()
+        project_root = Path('project-root')
+
+        result = RundevCommand()._start(
+            'web',
+            ['serve'],
+            {'EXAMPLE': 'value'},
+            project_root,
+            process_job,
+        )
+
+        self.assertIs(result, process)
+        process_job.assign.assert_called_once_with(process)
+
 
 class UserRegistrationTests(TestCase):
     """
