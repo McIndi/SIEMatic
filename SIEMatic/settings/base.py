@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     'crispy_forms',
     'crispy_bootstrap5',
     'rest_framework',
+    'drf_spectacular',
     'django_filters',
     'channels',
     'project',
@@ -285,6 +286,7 @@ CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
 
 REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.BasicAuthentication',
         'rest_framework.authentication.SessionAuthentication',
@@ -304,6 +306,12 @@ REST_FRAMEWORK = {
         'search': SEARCH_THROTTLE_RATE,
         'anon': ANON_THROTTLE_RATE,
     },
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'SIEMatic REST API',
+    'DESCRIPTION': 'REST endpoints for event ingestion and saved searches.',
+    'VERSION': '1.0.0',
 }
 
 
