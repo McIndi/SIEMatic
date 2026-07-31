@@ -33,3 +33,4 @@ htmlcov/
 
 # MkDocs build output
 /site/
+/docs/reference/openapi.yaml
