@@ -13,6 +13,15 @@ class Finding(models.Model):
         RESOLVED = 'resolved', 'Resolved'
         FALSE_POSITIVE = 'false_positive', 'False positive'
 
+    @classmethod
+    def actionable_statuses(cls):
+        """Return statuses that require preservation of the linked event."""
+        return (
+            cls.Status.NEW,
+            cls.Status.ACKNOWLEDGED,
+            cls.Status.IN_PROGRESS,
+        )
+
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='findings')
     rule_name = models.CharField(max_length=255)
     description = models.TextField()

@@ -37,10 +37,22 @@ values of the named `split_by` field. `allow` limits deletion to listed values.
 retention periods.
 
 Before you enable a policy, reproduce its cutoff and selection as a search.
-Inspect the matching events. Make sure that no legal hold or incident response
-requirement applies. Start with a narrow allowlist. After deployment, inspect
-the crawler logs and measure the database size. PostgreSQL can require a vacuum
-operation before it can reuse the free space.
+Examine the matching events. Make sure that no legal hold or incident response
+requirement applies. Start with a narrow allowlist. After deployment, examine
+the crawler logs. Then measure the database size. PostgreSQL can require a
+vacuum operation before it can reuse the free space.
 
-Deleting an event cascades to findings linked to that event. Preserve required
-findings or extend the event policy before the cutoff is reached.
+## Finding preservation
+
+An actionable finding preserves its event. The actionable statuses are `new`,
+`acknowledged`, and `in_progress`. The retention crawler skips an event if any
+linked finding has one of these statuses.
+
+The terminal statuses are `resolved` and `false_positive`. If all linked
+findings are terminal, the event becomes eligible for deletion. The event must
+also match the retention cutoff and policy rules. An event without findings is
+eligible if it matches the same cutoff and rules.
+
+The retention crawler deletes an eligible event and all findings linked to that
+event. It does not delete an event immediately after a status change. The next
+applicable retention run deletes the event.

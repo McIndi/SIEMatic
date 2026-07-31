@@ -246,6 +246,87 @@ class CrawlerBehaviorTests(TestCase):
         self.assertTrue(Event.objects.filter(pk=old_other.pk).exists())
         self.assertTrue(Event.objects.filter(pk=recent_match.pk).exists())
 
+    def test_retention_preserves_events_with_actionable_findings(self):
+        old_time = timezone.now() - timedelta(days=31)
+        events = []
+        for status in Finding.actionable_statuses():
+            event = Event.objects.create(host="target", data=status)
+            Event.objects.filter(pk=event.pk).update(created=old_time)
+            Finding.objects.create(
+                event=event,
+                rule_name=f"{status} finding",
+                description="This finding requires action.",
+                status=status,
+            )
+            events.append(event)
+
+        DataRetentionCrawler({
+            "retention_days": 30,
+            "rules": [{}],
+        }).run()
+
+        self.assertEqual(
+            Event.objects.filter(pk__in=[event.pk for event in events]).count(),
+            len(events),
+        )
+        self.assertEqual(Finding.objects.count(), len(events))
+
+    def test_retention_deletes_old_events_with_only_terminal_findings(self):
+        old_time = timezone.now() - timedelta(days=31)
+        events = []
+        for status in (Finding.Status.RESOLVED, Finding.Status.FALSE_POSITIVE):
+            event = Event.objects.create(host="target", data=status)
+            Event.objects.filter(pk=event.pk).update(created=old_time)
+            Finding.objects.create(
+                event=event,
+                rule_name=f"{status} finding",
+                description="This finding does not require action.",
+                status=status,
+            )
+            events.append(event)
+
+        with self.assertLogs(
+            "crawlers.plugins.data_retention_crawler",
+            level="INFO",
+        ) as logs:
+            DataRetentionCrawler({
+                "retention_days": 30,
+                "rules": [{}],
+            }).run()
+
+        self.assertFalse(
+            Event.objects.filter(pk__in=[event.pk for event in events]).exists(),
+        )
+        self.assertFalse(Finding.objects.exists())
+        self.assertTrue(any(
+            "Total deleted: 2 events and 2 findings" in message
+            for message in logs.output
+        ))
+
+    def test_retention_preserves_mixed_status_event(self):
+        old_time = timezone.now() - timedelta(days=31)
+        Event.objects.filter(pk=self.event.pk).update(created=old_time)
+        Finding.objects.create(
+            event=self.event,
+            rule_name="Resolved finding",
+            description="This finding is resolved.",
+            status=Finding.Status.RESOLVED,
+        )
+        Finding.objects.create(
+            event=self.event,
+            rule_name="Active finding",
+            description="This finding requires action.",
+            status=Finding.Status.IN_PROGRESS,
+        )
+
+        DataRetentionCrawler({
+            "retention_days": 30,
+            "rules": [{}],
+        }).run()
+
+        self.assertTrue(Event.objects.filter(pk=self.event.pk).exists())
+        self.assertEqual(Finding.objects.filter(event=self.event).count(), 2)
+
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
         DEFAULT_FROM_EMAIL="siematic@example.test",
