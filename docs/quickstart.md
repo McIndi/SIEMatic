@@ -8,6 +8,11 @@ The `rundev` management command starts a complete local SIEMatic environment
 with SQLite and a self-signed certificate. It is intended for development and
 evaluation, not production.
 
+!!! warning "Early-release alpha"
+    SIEMatic is an alpha. It is suitable for evaluation and development, not for
+    production reliance. For a production support contract, contact
+    **sales@mcindi.com**.
+
 ## Prerequisites
 
 - Python 3.12 or newer (CI exercises Python 3.13 and 3.14)

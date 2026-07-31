@@ -6,6 +6,10 @@ title: Changelog
 
 ## Unreleased
 
+- Published the initial public alpha of SIEMatic. This release is early and
+  may change without notice; production reliance requires a paid support
+  contract (`sales@mcindi.com`).
+
 - Reorganized project documentation into overview, quickstart, operations,
   search and dashboard, developer, reference, history, and changelog sections.
 - Added generated search-command, REST API, and scoped Python API references.

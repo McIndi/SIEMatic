@@ -8,6 +8,13 @@ SIEMatic is a fair-sourced observability platform built with Django. Pluggable
 agents collect host and log events. An authenticated indexer stores them. A
 pipeline language searches, transforms, and visualizes the results.
 
+!!! warning "Early-release alpha"
+    SIEMatic is under active development and is shipping as an alpha. Interfaces,
+    data formats, configuration, and features may change without notice, and
+    stability is not guaranteed. Evaluate it in non-production environments. If
+    you need to depend on SIEMatic for a production workload, contact
+    **sales@mcindi.com** for a paid support contract.
+
 ## What SIEMatic provides
 
 - **Collection and indexing:** platform-aware agent plugins send events to an
