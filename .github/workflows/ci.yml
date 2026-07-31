@@ -71,6 +71,9 @@ jobs:
       - name: Collect static assets
         run: python manage.py collectstatic --no-input --settings SIEMatic.settings.web
 
+      - name: Test documentation examples
+        run: python tools/docs/test_doc_examples.py
+
       - name: Run tests with coverage
         run: |
           coverage run manage.py test --settings SIEMatic.settings.web
