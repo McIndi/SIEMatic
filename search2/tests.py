@@ -513,6 +513,85 @@ class PipelineCommandTests(TestCase):
         self.assertNotIn("tags", result[0])
         self.assertEqual(result[0]["tags_kind"], "server")
 
+    def test_event_split_expands_record_arrays_and_retains_other_fields(self):
+        rows = [
+            {"host": "alpha", "tags": ["one", "two"], "value": 7},
+            {"host": "beta", "tags": "scalar", "value": 8},
+            {"host": "gamma", "tags": [], "value": 9},
+            {"host": "delta", "value": 10},
+        ]
+
+        result = run_pipeline(rows, "event_split --field=tags")
+
+        self.assertEqual(
+            result,
+            [
+                {"host": "alpha", "tags": "one", "value": 7},
+                {"host": "alpha", "tags": "two", "value": 7},
+                {"host": "beta", "tags": "scalar", "value": 8},
+                {"host": "delta", "value": 10},
+            ],
+        )
+        self.assertEqual(rows[0]["tags"], ["one", "two"])
+
+    def test_event_split_preserves_dataframe_backend(self):
+        import pandas as pd
+
+        dataframe = pd.DataFrame([
+            {"host": "alpha", "tags": ["one", "two"], "value": 7},
+            {"host": "beta", "tags": "scalar", "value": 8},
+            {"host": "gamma", "tags": [], "value": 9},
+        ])
+
+        result = run_pipeline(dataframe, "event_split --field=tags")
+
+        self.assertIsInstance(result, pd.DataFrame)
+        self.assertEqual(list(result["host"]), ["alpha", "alpha", "beta"])
+        self.assertEqual(list(result["tags"]), ["one", "two", "scalar"])
+        self.assertEqual(list(result["value"]), [7, 7, 8])
+
+    def test_event_split_materializes_model_queryset_as_records(self):
+        from events.models import Event
+
+        Event.objects.create(
+            host="queryset-host",
+            extracted_fields=[{"code": 200}, {"code": 201}],
+        )
+
+        result = run_pipeline(
+            Event.objects.filter(host="queryset-host"),
+            "event_split --field=extracted_fields",
+        )
+
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["host"], "queryset-host")
+        self.assertEqual(result[0]["extracted_fields"], {"code": 200})
+        self.assertEqual(result[1]["extracted_fields"], {"code": 201})
+
+    def test_event_split_preserves_values_queryset_projection(self):
+        from events.models import Event
+
+        Event.objects.create(
+            host="projected-host",
+            extracted_fields=["one", "two"],
+        )
+
+        result = run_pipeline(
+            Event.objects.filter(host="projected-host").values(
+                "host", "extracted_fields"
+            ),
+            "event_split --field=extracted_fields",
+        )
+
+        self.assertEqual(
+            result,
+            [
+                {"host": "projected-host", "extracted_fields": "one"},
+                {"host": "projected-host", "extracted_fields": "two"},
+            ],
+        )
+
     def test_drop_supports_records_and_dataframes(self):
         import pandas as pd
 

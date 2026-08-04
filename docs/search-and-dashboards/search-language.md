@@ -49,12 +49,27 @@ search --filter='created__gte={last_day}' --order-by='["-created"]' --limit=100
 ## Transformations
 
 Registered commands include `annotate`, `filter`, `groupby`, `stats`, `sort`,
-`rename`, `unique`, `explode`, `drop`, `to_dataframe`, `head`, `tail`, `join`, and
-`run_saved_search`. Argument details are generated in the command reference.
+`rename`, `unique`, `explode`, `event_split`, `drop`, `to_dataframe`, `head`,
+`tail`, `join`, and `run_saved_search`. The command reference contains argument
+details.
 
 `explode --field=details` promotes the top-level keys in `details` to columns
 such as `details_action` and removes `details`. Use
 `drop --fields='["raw", "internal_id"]'` to remove several fields explicitly.
+
+`event_split --field=tags` creates one event for each item in the `tags` array.
+Each new event keeps the values from the source event. The `tags` field contains
+one array item in each new event.
+
+```pipeline
+event_split --field=tags
+```
+
+The command keeps an event unchanged if `tags` is missing or is not an array.
+An empty array produces no events. For a DataFrame, the command returns a
+DataFrame. For Python records, the command returns records. The command
+materializes a Django QuerySet and returns records because row expansion is not
+portable across database engines.
 
 Expressions support an allowlist of Django functions. The list includes
 aggregation, string, math, date/time, JSON, and utility functions. Examples are
