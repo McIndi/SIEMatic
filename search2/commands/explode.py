@@ -3,6 +3,8 @@ import json
 from textwrap import dedent
 from django.db.models import F
 
+from search2.commands.drop import drop_queryset_fields
+
 
 class ExplodeCmd:
     """Explode command for flattening top-level keys of a JSON field into separate columns.
@@ -49,14 +51,9 @@ class ExplodeCmd:
         annotations = {f'{field}_{k}': F(f'{field}__{k}') for k in keys}
         qs = qs.annotate(**annotations)
 
-        # Defer the original field since it's now redundant with the exploded fields
-        try:
-            qs = qs.defer(field)
-        except (AttributeError, TypeError):
-            # If defer fails (e.g., after values/values_list), skip it
-            pass
-
-        return qs
+        # defer() only delays loading a model field. An explicit projection is
+        # required to keep the source field out of serialized results.
+        return drop_queryset_fields(qs, [field])
 
     def run_df(self, df, args, ctx):
         """Explode JSON field in DataFrame."""
@@ -81,16 +78,30 @@ class ExplodeCmd:
         df[field] = df[field].apply(parse_json)
 
         # Expand top-level keys
-        expanded = pd.json_normalize(df[field])
+        expanded = pd.json_normalize(df[field].tolist())
+        expanded.index = df.index
+        df = df.drop(columns=[field])
         if not expanded.empty:
-            # Remove the original field and add expanded columns at once using concat
-            df = df.drop(columns=[field])
             expanded = expanded.add_prefix(f'{field}_')
             df = pd.concat([df, expanded], axis=1)
 
         return df
 
     def run_records(self, rows, args, ctx):
-        """Convert records to DataFrame and explode JSON."""
-        df = pd.DataFrame(rows)
-        return self.run_df(df, args, ctx)
+        """Explode JSON while preserving the records backend."""
+        field = getattr(args, 'field')
+        result = []
+        for row in rows:
+            exploded = dict(row)
+            value = exploded.pop(field, None)
+            if isinstance(value, str):
+                try:
+                    value = json.loads(value)
+                except (json.JSONDecodeError, TypeError):
+                    value = {}
+            if isinstance(value, dict):
+                exploded.update(
+                    {f'{field}_{key}': item for key, item in value.items()}
+                )
+            result.append(exploded)
+        return result

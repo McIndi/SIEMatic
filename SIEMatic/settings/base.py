@@ -326,6 +326,7 @@ SIEMATIC_SEARCH = {
         "search2.commands.annotate:AnnotateCmd",
         "search2.commands.to_dataframe:ToDataFrameCmd",
         "search2.commands.explode:ExplodeCmd",
+        "search2.commands.drop:DropCmd",
         "search2.commands.run_saved_search:RunSavedSearchCommand",
         "search2.commands.filter:FilterCmd",
         "search2.commands.sort:SortCmd",
@@ -343,4 +344,3 @@ SIEMATIC_SEARCH = {
     },
     "AUTHZ_CHECK": "search2.engine.authz.default_check",
 }
-

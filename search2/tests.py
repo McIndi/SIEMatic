@@ -427,10 +427,70 @@ class PipelineCommandTests(TestCase):
             self.rows,
             "explode --field=tags | to_dataframe",
         )
+        self.assertNotIn("tags", result.columns)
         self.assertEqual(
             list(result["tags_kind"]),
             ["server", "client", "client"],
         )
+
+    def test_explode_records_removes_source_field_and_preserves_backend(self):
+        result = run_pipeline(self.rows, "explode --field=tags")
+
+        self.assertIsInstance(result, list)
+        self.assertNotIn("tags", result[0])
+        self.assertEqual(result[0]["tags_kind"], "server")
+
+    def test_drop_supports_records_and_dataframes(self):
+        import pandas as pd
+
+        query = "drop --fields='[\"host\", \"tags\"]'"
+        records = run_pipeline(self.rows, query)
+        dataframe = run_pipeline(pd.DataFrame(self.rows), query)
+
+        self.assertEqual(set(records[0]), {"value"})
+        self.assertEqual(list(dataframe.columns), ["value"])
+
+    def test_drop_ignores_fields_that_are_not_present(self):
+        result = run_pipeline(self.rows, "drop --fields='[\"missing\"]'")
+
+        self.assertEqual(result, self.rows)
+
+    def test_drop_and_explode_support_querysets(self):
+        from events.models import Event
+
+        Event.objects.create(
+            host="queryset-host",
+            extracted_fields={"kind": "server", "code": 200},
+        )
+
+        dropped = run_pipeline(
+            Event.objects.all(),
+            "drop --fields='[\"data\", \"source\"]'",
+        )
+        dropped_row = list(dropped)[0]
+        self.assertNotIn("data", dropped_row)
+        self.assertNotIn("source", dropped_row)
+
+        projected = run_pipeline(
+            Event.objects.values("host", "data"),
+            "drop --fields='[\"data\"]'",
+        )
+        self.assertEqual(list(projected), [{"host": "queryset-host"}])
+
+        no_fields = run_pipeline(
+            Event.objects.values("host"),
+            "drop --fields='[\"host\"]'",
+        )
+        self.assertEqual(no_fields, [{}])
+
+        exploded = run_pipeline(
+            Event.objects.filter(host="queryset-host"),
+            "explode --field=extracted_fields",
+        )
+        exploded_row = list(exploded)[0]
+        self.assertNotIn("extracted_fields", exploded_row)
+        self.assertEqual(exploded_row["extracted_fields_kind"], "server")
+        self.assertEqual(exploded_row["extracted_fields_code"], 200)
 
     def test_pipeline_substitutes_environment_parameters(self):
         result = run_pipeline(

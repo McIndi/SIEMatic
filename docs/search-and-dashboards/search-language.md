@@ -49,8 +49,12 @@ search --filter='created__gte={last_day}' --order-by='["-created"]' --limit=100
 ## Transformations
 
 Registered commands include `annotate`, `filter`, `groupby`, `stats`, `sort`,
-`rename`, `unique`, `explode`, `to_dataframe`, `head`, `tail`, `join`, and
+`rename`, `unique`, `explode`, `drop`, `to_dataframe`, `head`, `tail`, `join`, and
 `run_saved_search`. Argument details are generated in the command reference.
+
+`explode --field=details` promotes the top-level keys in `details` to columns
+such as `details_action` and removes `details`. Use
+`drop --fields='["raw", "internal_id"]'` to remove several fields explicitly.
 
 Expressions support an allowlist of Django functions. The list includes
 aggregation, string, math, date/time, JSON, and utility functions. Examples are
