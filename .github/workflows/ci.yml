@@ -95,3 +95,25 @@ jobs:
 
       - name: Build Docker image
         run: docker build --build-arg DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY}" .
+
+  dependency-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Audit runtime dependencies
+        run: pip-audit -r requirements.txt
+
+      - name: Audit docs dependencies
+        run: pip-audit -r requirements-docs.txt
