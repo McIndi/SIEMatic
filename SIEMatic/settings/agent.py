@@ -45,6 +45,18 @@ AGENT = {
             'sourcetype': 'json',
         },
         {
+            'name': 'network_security',
+            'enabled': True,
+            'poll_interval': 30.0,
+            'status_interval': 300.0,
+            'include_cmdline': False,
+            'db_alias': 'default',
+            'index': 'network_security',
+            'host': socket.gethostname(),
+            'source': 'network_security',
+            'sourcetype': 'json',
+        },
+        {
             'name': 'tail',
             'enabled': False,
             'patterns': ['logs/*.log'],
@@ -96,9 +108,15 @@ if platform.system() == 'Windows':
         ]
     )
 
-# ``rundev`` deliberately collects only lightweight, cross-platform host
-# telemetry. Production deployments retain the platform-specific defaults.
-if env_bool('SIEMATIC_AGENT_SYSMON_ONLY', False):
+# ``rundev`` deliberately collects only lightweight, cross-platform core
+# telemetry. The old sysmon-only variable remains as a compatibility alias.
+core_only = env_bool(
+    'SIEMATIC_AGENT_CORE_ONLY',
+    env_bool('SIEMATIC_AGENT_SYSMON_ONLY', False),
+)
+if core_only:
     AGENT['plugins'] = [
-        plugin for plugin in AGENT['plugins'] if plugin['name'] == 'sysmon'
+        plugin
+        for plugin in AGENT['plugins']
+        if plugin['name'] in {'sysmon', 'network_security'}
     ]

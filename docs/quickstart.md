@@ -58,12 +58,13 @@ then supervises:
 
 - the HTTPS web application at `https://localhost:8000/`
 - the TLS WebSocket indexer at `https://localhost:8001/`
-- an authenticated agent running the cross-platform sysmon plugin.
+- an authenticated agent running the cross-platform Sysmon and network-security
+  plugins.
 
 The browser will warn about the self-signed development certificate. After
 accepting it, use the username and password in `rundev-superuser.txt` to sign
-in. Allow several seconds for CPU, memory, disk, and network events to become
-searchable. Press Ctrl+C to stop the process tree.
+in. Allow several seconds for CPU, memory, disk, listening-port, and active-
+connection events to become searchable. Press Ctrl+C to stop the process tree.
 
 `rundev-superuser.txt` is ignored by Git and is overwritten with a newly
 generated password each time `rundev` starts. Treat it as a secret and use this
@@ -88,6 +89,12 @@ Open `/search2/` and enter:
 
 ```pipeline
 search --filter='index="sysmon"' --order-by='["-created"]' --limit=20
+```
+
+To inspect recently discovered listeners and active connections, use:
+
+```pipeline
+search --filter='index="network_security"' --order-by='["-created"]' --limit=20
 ```
 
 Use the command help displayed beside the search form or consult the generated

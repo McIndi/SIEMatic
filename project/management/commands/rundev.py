@@ -136,7 +136,7 @@ class _WindowsProcessJob:
 
 class Command(BaseCommand):
     help = (
-        'Start the HTTPS web server, TLS indexer, and sysmon-only agent '
+        'Start the HTTPS web server, TLS indexer, and core telemetry agent '
         'against the local SQLite database. Create a development superuser '
         f'and write its credentials to {DEV_SUPERUSER_CREDENTIALS_FILENAME}.'
     )
@@ -238,7 +238,7 @@ class Command(BaseCommand):
                 'INDEXER_CA_BUNDLE': str(cert_path),
                 'INDEXER_USERNAME': DEV_AGENT_USERNAME,
                 'INDEXER_PASSWORD': agent_password,
-                'SIEMATIC_AGENT_SYSMON_ONLY': 'True',
+                'SIEMATIC_AGENT_CORE_ONLY': 'True',
             }
             agent = self._start('agent', ['agent'], agent_env, project_root, process_job)
             processes.append(('agent', agent))
@@ -247,7 +247,8 @@ class Command(BaseCommand):
                 f'SIEMatic is running at https://localhost:{options["web_port"]}/'
             ))
             self.stdout.write(
-                'Sysmon host telemetry will begin arriving within a few seconds.'
+                'System and network-security telemetry will begin arriving '
+                'within a few seconds.'
             )
             self.stdout.write(
                 f'Sign in as {DEV_SUPERUSER_USERNAME} with the password in '

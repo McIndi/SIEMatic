@@ -20,6 +20,8 @@ their public interface is argparse-based.
 
 ::: agent.plugins.macos_launchd_plugin
 
+::: agent.plugins.network_security_plugin
+
 ::: agent.plugins.plugin_process_manager
 
 ::: agent.plugins.sysmon_plugin
