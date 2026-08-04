@@ -64,6 +64,12 @@
         function formatLabel(v) {
           if (v == null) return '';
           const s = String(v);
+          // JavaScript accepts short numeric strings such as port numbers as
+          // dates (for example, "80" becomes a date in 1980). Only parse
+          // labels that have an ISO date prefix.
+          if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/.test(s)) {
+            return s;
+          }
           const d = new Date(s);
           if (!isNaN(d.getTime())) {
             return d.toISOString().slice(0, 19).replace('T', ' ');

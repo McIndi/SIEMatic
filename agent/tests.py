@@ -2,6 +2,7 @@
 
 import tempfile
 import socket
+import json
 from pathlib import Path
 from queue import Queue
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ import psutil
 from django.test import SimpleTestCase, override_settings
 
 from agent.plugins.plugin_process_manager import get_indexer_transport
+from agent.plugins.host_security_posture_plugin import HostSecurityPosturePlugin
 from agent.plugins.network_security_plugin import NetworkSecurityPlugin
 from agent.plugins.watchdog_plugin import WatchdogPlugin
 from tools.gen_dev_cert import generate_certificate
@@ -110,6 +112,212 @@ class WatchdogPluginTests(SimpleTestCase):
             if plugin['name'] == 'network_security'
         )
         self.assertTrue(network_config['enabled'])
+
+        posture_config = next(
+            plugin
+            for plugin in AGENT['plugins']
+            if plugin['name'] == 'host_security_posture'
+        )
+        self.assertTrue(posture_config['enabled'])
+
+
+class HostSecurityPosturePluginTests(SimpleTestCase):
+    def setUp(self):
+        self.queue = Queue()
+        self.stop_event = Event()
+        self.plugin = HostSecurityPosturePlugin(
+            {
+                'host': 'test-host',
+                'poll_interval': 900,
+                'status_interval': 3600,
+                'collect_local_accounts': False,
+            },
+            self.queue,
+            self.stop_event,
+        )
+
+    def _drain(self):
+        events = []
+        while not self.queue.empty():
+            events.append(self.queue.get_nowait())
+        return events
+
+    @patch.object(HostSecurityPosturePlugin, '_collect_security_controls')
+    @patch.object(HostSecurityPosturePlugin, '_collect_filesystems')
+    @patch.object(HostSecurityPosturePlugin, '_collect_user_sessions')
+    @patch.object(HostSecurityPosturePlugin, '_collect_network_interfaces')
+    @patch.object(HostSecurityPosturePlugin, '_collect_host_identity')
+    def test_emits_json_serializable_initial_component_snapshots(
+        self,
+        host_identity,
+        interfaces,
+        sessions,
+        filesystems,
+        controls,
+    ):
+        host_identity.return_value = {'os': 'ExampleOS'}
+        interfaces.return_value = [{'name': 'eth0', 'is_up': True}]
+        sessions.return_value = [{'username': 'alice'}]
+        filesystems.return_value = [{'mountpoint': '/'}]
+        controls.return_value = {'firewall': {'state': 'enabled'}}
+
+        self.plugin.collect_once(timestamp=1000.0)
+
+        events = self._drain()
+        self.assertEqual(
+            [event['component'] for event in events[:-1]],
+            [
+                'host_identity',
+                'network_interfaces',
+                'user_sessions',
+                'filesystems',
+                'security_controls',
+            ],
+        )
+        self.assertTrue(
+            all(event['event_type'] == 'posture_snapshot' for event in events[:-1])
+        )
+        self.assertEqual(events[-1]['event_type'], 'collection_status')
+        self.assertEqual(events[-1]['data']['state'], 'ok')
+        json.dumps(events)
+
+    @patch.object(HostSecurityPosturePlugin, '_collect_snapshot')
+    def test_emits_only_changed_components_after_initial_snapshot(self, collect):
+        collect.side_effect = [
+            ({'host_identity': {'os': 'One'}, 'filesystems': []}, []),
+            ({'host_identity': {'os': 'Two'}, 'filesystems': []}, []),
+        ]
+
+        self.plugin.collect_once(timestamp=1000.0)
+        self._drain()
+        self.plugin.collect_once(timestamp=1001.0)
+
+        events = self._drain()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]['event_type'], 'posture_changed')
+        self.assertEqual(events[0]['component'], 'host_identity')
+        self.assertEqual(events[0]['data'], {'os': 'Two'})
+        self.assertEqual(events[0]['previous'], {'os': 'One'})
+
+    @patch.object(HostSecurityPosturePlugin, '_collect_snapshot')
+    def test_reports_partial_collection_without_discarding_good_data(self, collect):
+        collect.return_value = (
+            {'host_identity': {'os': 'ExampleOS'}},
+            [{'component': 'local_accounts', 'error_type': 'AccessDenied'}],
+        )
+
+        self.plugin.collect_once(timestamp=1000.0)
+
+        events = self._drain()
+        self.assertEqual(events[0]['event_type'], 'posture_snapshot')
+        self.assertEqual(events[1]['event_type'], 'collection_status')
+        self.assertEqual(events[1]['data']['state'], 'partial')
+        self.assertEqual(
+            events[1]['data']['components_failed'],
+            ['local_accounts'],
+        )
+
+    @patch('agent.plugins.host_security_posture_plugin.psutil.net_if_stats')
+    @patch('agent.plugins.host_security_posture_plugin.psutil.net_if_addrs')
+    def test_normalizes_network_interfaces(self, net_if_addrs, net_if_stats):
+        net_if_addrs.return_value = {
+            'eth0': [
+                SimpleNamespace(
+                    family=socket.AF_INET,
+                    address='10.0.0.2',
+                    netmask='255.255.255.0',
+                    broadcast='10.0.0.255',
+                    ptp=None,
+                )
+            ]
+        }
+        net_if_stats.return_value = {
+            'eth0': SimpleNamespace(
+                isup=True,
+                duplex=psutil.NIC_DUPLEX_FULL,
+                speed=1000,
+                mtu=1500,
+            )
+        }
+
+        interfaces = self.plugin._collect_network_interfaces()
+
+        self.assertEqual(interfaces[0]['name'], 'eth0')
+        self.assertEqual(interfaces[0]['duplex'], 'full')
+        self.assertEqual(interfaces[0]['addresses'][0]['family'], 'ipv4')
+        self.assertEqual(interfaces[0]['addresses'][0]['address'], '10.0.0.2')
+
+    @patch.object(HostSecurityPosturePlugin, '_collect_windows_controls')
+    @patch(
+        'agent.plugins.host_security_posture_plugin.platform.system',
+        return_value='Windows',
+    )
+    def test_dispatches_security_controls_by_platform(
+        self,
+        _system,
+        windows_controls,
+    ):
+        windows_controls.return_value = {'firewall': {'state': 'available'}}
+
+        result = self.plugin._collect_security_controls()
+
+        self.assertEqual(result, windows_controls.return_value)
+        windows_controls.assert_called_once_with()
+
+    @patch.object(HostSecurityPosturePlugin, '_run')
+    @patch(
+        'agent.plugins.host_security_posture_plugin.shutil.which',
+        return_value='/usr/sbin/ufw',
+    )
+    def test_linux_firewall_distinguishes_inactive_from_active(
+        self,
+        _which,
+        run,
+    ):
+        run.return_value = 'Status: inactive'
+
+        result = self.plugin._linux_firewall()
+
+        self.assertEqual(result, {'provider': 'ufw', 'state': 'disabled'})
+
+    @patch.object(HostSecurityPosturePlugin, '_run')
+    @patch(
+        'agent.plugins.host_security_posture_plugin.shutil.which',
+        return_value='/usr/bin/lsblk',
+    )
+    def test_linux_disk_encryption_detects_nested_luks_devices(
+        self,
+        _which,
+        run,
+    ):
+        run.return_value = json.dumps({
+            'blockdevices': [
+                {
+                    'name': 'sda',
+                    'type': 'disk',
+                    'children': [
+                        {
+                            'name': 'sda2',
+                            'type': 'part',
+                            'fstype': 'crypto_LUKS',
+                        }
+                    ],
+                }
+            ]
+        })
+
+        result = self.plugin._linux_disk_encryption()
+
+        self.assertEqual(result['state'], 'detected')
+        self.assertEqual(result['encrypted_devices'], ['sda2'])
+
+    def test_rejects_non_positive_intervals(self):
+        with self.assertRaisesRegex(ValueError, 'command_timeout'):
+            HostSecurityPosturePlugin(
+                {'command_timeout': 0},
+                self.queue,
+                self.stop_event,
+            )
 
 
 class NetworkSecurityPluginTests(SimpleTestCase):

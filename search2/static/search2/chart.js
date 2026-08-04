@@ -26,6 +26,11 @@
   function formatLabel(v) {
     if (v == null) return "";
     const s = String(v);
+    // Date accepts short numeric strings such as network ports and interprets
+    // them as years. Only parse labels that have an ISO date prefix.
+    if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/.test(s)) {
+      return s;
+    }
     const d = new Date(s);
     
     // Check if it's a valid date

@@ -16,6 +16,8 @@ their public interface is argparse-based.
 
 ## Agent plugins
 
+::: agent.plugins.host_security_posture_plugin
+
 ::: agent.plugins.linux_schedulers_plugin
 
 ::: agent.plugins.macos_launchd_plugin

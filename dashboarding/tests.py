@@ -1,11 +1,22 @@
 from unittest.mock import ANY, patch
 
 from django.contrib.auth import get_user_model
+from django.template.loader import get_template
 from django.test import TestCase
 from django.urls import reverse
 
 from dashboarding.forms import DashboardParamsForm
 from dashboarding.models import Dashboard, Panel
+
+
+class DashboardChartLabelTests(TestCase):
+    def test_numeric_categories_are_not_passed_to_date_parser(self):
+        source = get_template(
+            'dashboarding/dashboard_view.html'
+        ).template.source
+
+        self.assertIn("typeof v !== 'string'", source)
+        self.assertIn(r'/^\d{4}-\d{2}-\d{2}', source)
 
 
 class PanelPreviewAuthTests(TestCase):

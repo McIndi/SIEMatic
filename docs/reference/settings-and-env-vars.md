@@ -37,7 +37,7 @@ accept `1`, `true`, `yes`, or `on` (case-insensitive); other values are false.
 | `INDEXER_TLS` | value of `SIEMATIC_TLS_ENABLED` | Enables TLS for agent-to-indexer transport. |
 | `INDEXER_USERNAME` | none | Username used by an agent to authenticate to the indexer. |
 | `SIEMATIC_AGENT_SYSMON_ONLY` | `False` | Deprecated alias for `SIEMATIC_AGENT_CORE_ONLY`. |
-| `SIEMATIC_AGENT_CORE_ONLY` | `False` | Uses the cross-platform Sysmon and network-security plugins instead of platform defaults. |
+| `SIEMATIC_AGENT_CORE_ONLY` | `False` | Uses the cross-platform Sysmon, network-security, and host-security-posture plugins instead of platform defaults. |
 | `SIEMATIC_ANON_THROTTLE_RATE` | `20/hour` | DRF anonymous request throttle rate. |
 | `SIEMATIC_INGEST_THROTTLE_RATE` | `20000/hour` | DRF event-ingestion throttle rate. |
 | `SIEMATIC_SEARCH_THROTTLE_RATE` | `120/min` | DRF search throttle rate. |

@@ -57,6 +57,19 @@ AGENT = {
             'sourcetype': 'json',
         },
         {
+            'name': 'host_security_posture',
+            'enabled': True,
+            'poll_interval': 900.0,
+            'status_interval': 3600.0,
+            'command_timeout': 10.0,
+            'collect_local_accounts': True,
+            'db_alias': 'default',
+            'index': 'host_security_posture',
+            'host': socket.gethostname(),
+            'source': 'host_security_posture',
+            'sourcetype': 'json',
+        },
+        {
             'name': 'tail',
             'enabled': False,
             'patterns': ['logs/*.log'],
@@ -118,5 +131,9 @@ if core_only:
     AGENT['plugins'] = [
         plugin
         for plugin in AGENT['plugins']
-        if plugin['name'] in {'sysmon', 'network_security'}
+        if plugin['name'] in {
+            'sysmon',
+            'network_security',
+            'host_security_posture',
+        }
     ]

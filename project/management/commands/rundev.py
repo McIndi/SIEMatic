@@ -247,8 +247,8 @@ class Command(BaseCommand):
                 f'SIEMatic is running at https://localhost:{options["web_port"]}/'
             ))
             self.stdout.write(
-                'System and network-security telemetry will begin arriving '
-                'within a few seconds.'
+                'System, network-security, and host-posture telemetry will '
+                'begin arriving within a few seconds.'
             )
             self.stdout.write(
                 f'Sign in as {DEV_SUPERUSER_USERNAME} with the password in '

@@ -3,8 +3,10 @@ Tests for the project app.
 
 This module contains unit tests for profiles, authentication, and default permissions.
 """
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
@@ -15,12 +17,14 @@ from django.test import TestCase, Client
 from django.urls import NoReverseMatch, reverse
 
 from dashboarding.models import Dashboard, Panel
+from events.models import Event
 from project.management.commands.rundev import (
     Command as RundevCommand,
     DEV_SUPERUSER_USERNAME,
 )
-from search2.engine.core import parse_pipeline
+from search2.engine.core import parse_pipeline, run_pipeline
 from search2.models import SavedSearch
+from search2.utils import coerce_to_list_of_dicts
 
 from .models import UserProfile
 
@@ -82,6 +86,17 @@ class RundevSuperuserTests(TestCase):
 
 
 class SeedDefaultContentTests(TestCase):
+    NETWORK_DASHBOARDS = {
+        'Network Security Overview',
+        'Listening Service Activity',
+        'Public Connection Activity',
+    }
+    POSTURE_DASHBOARDS = {
+        'Host Security Posture Overview',
+        'Security Controls & Encryption',
+        'Host Identity & Access Inventory',
+    }
+
     def setUp(self):
         self.owner = get_user_model().objects.create_superuser(
             username=DEV_SUPERUSER_USERNAME,
@@ -101,6 +116,11 @@ class SeedDefaultContentTests(TestCase):
 
         dashboards = Dashboard.objects.filter(created_by=self.owner)
         self.assertGreater(dashboards.count(), 0)
+        self.assertTrue(
+            (self.NETWORK_DASHBOARDS | self.POSTURE_DASHBOARDS).issubset(
+                set(dashboards.values_list('name', flat=True))
+            )
+        )
         for dashboard in dashboards:
             panels = Panel.objects.filter(dashboard=dashboard)
             self.assertGreater(panels.count(), 0)
@@ -109,6 +129,195 @@ class SeedDefaultContentTests(TestCase):
                 if panel.visualization_type == 'chart':
                     self.assertTrue(panel.x_field)
                     self.assertTrue(panel.y_field)
+
+    def test_network_dashboard_searches_execute_against_collected_event_shapes(self):
+        listener = {
+            'type': 'network_security',
+            'event_type': 'listener_added',
+            'data': {
+                'protocol': 'tcp',
+                'local_address': '0.0.0.0',
+                'local_port': 8080,
+                'local_scope': 'wildcard',
+                'remote_address': None,
+                'remote_port': None,
+                'remote_scope': None,
+                'status': 'LISTEN',
+                'pid': 101,
+                'process_name': 'example-server',
+                'process_exe': '/opt/example-server',
+                'process_user': 'service-user',
+            },
+        }
+        connection = {
+            'type': 'network_security',
+            'event_type': 'connection_opened',
+            'data': {
+                'protocol': 'tcp',
+                'local_address': '10.0.0.2',
+                'local_port': 50123,
+                'local_scope': 'private',
+                'remote_address': '203.0.113.10',
+                'remote_port': 443,
+                'remote_scope': 'public',
+                'status': 'ESTABLISHED',
+                'pid': 202,
+                'process_name': 'example-client',
+                'process_exe': '/opt/example-client',
+                'process_user': 'desktop-user',
+            },
+        }
+        status = {
+            'type': 'network_security',
+            'event_type': 'collection_status',
+            'data': {
+                'state': 'ok',
+                'listener_count': 1,
+                'connection_count': 1,
+                'processes_access_denied': 0,
+                'processes_unavailable': 0,
+                'collection_duration_ms': 12.5,
+            },
+        }
+        for payload in (listener, connection, status):
+            Event.objects.create(
+                index='network_security',
+                host='test-host',
+                source='network_security',
+                sourcetype='json',
+                data=json.dumps(payload),
+            )
+
+        call_command('seed_default_content', owner=DEV_SUPERUSER_USERNAME)
+        request = SimpleNamespace(user=self.owner)
+        network_searches = SavedSearch.objects.filter(
+            owner=self.owner,
+            name__in={
+                panel.search.removeprefix('run_saved_search ').strip('"')
+                for dashboard in Dashboard.objects.filter(
+                    created_by=self.owner,
+                    name__in=self.NETWORK_DASHBOARDS,
+                )
+                for panel in dashboard.panels.all()
+            },
+        )
+
+        self.assertEqual(network_searches.count(), 12)
+        for saved_search in network_searches:
+            result = run_pipeline(None, saved_search.query, request=request)
+            rows = coerce_to_list_of_dicts(result)
+            self.assertIsInstance(rows, list, saved_search.name)
+
+    def test_posture_dashboard_searches_execute_against_collected_event_shapes(self):
+        controls = {
+            'firewall': {
+                'state': 'available',
+                'profiles': [{'name': 'Private', 'enabled': True}],
+            },
+            'secure_boot': {'state': 'available', 'enabled': True},
+            'disk_encryption': {
+                'provider': 'BitLocker',
+                'state': 'available',
+                'volumes': [{'mount_point': 'C:', 'protection_status': 'On'}],
+            },
+            'endpoint_protection': {
+                'provider': 'Microsoft Defender',
+                'state': 'available',
+                'realtime_protection_enabled': True,
+            },
+        }
+        components = {
+            'host_identity': {
+                'fqdn': 'host.example.invalid',
+                'os': 'ExampleOS',
+                'os_release': '1',
+                'architecture': 'x86_64',
+                'boot_time': 1000.0,
+                'timezone': 'UTC',
+                'agent_user': 'collector',
+                'agent_privileged': False,
+            },
+            'network_interfaces': [
+                {'name': 'eth0', 'is_up': True, 'addresses': []},
+            ],
+            'user_sessions': [
+                {'username': 'alice', 'remote_host': '10.0.0.3'},
+            ],
+            'filesystems': [
+                {'device': '/dev/sda1', 'mountpoint': '/', 'filesystem': 'ext4'},
+            ],
+            'security_controls': controls,
+            'local_accounts': [
+                {'username': 'alice', 'uid': 1000, 'system_account': False},
+            ],
+        }
+        for component, data in components.items():
+            Event.objects.create(
+                index='host_security_posture',
+                host='test-host',
+                source='host_security_posture',
+                sourcetype='json',
+                data=json.dumps({
+                    'type': 'host_security_posture',
+                    'event_type': 'posture_snapshot',
+                    'component': component,
+                    'data': data,
+                }),
+            )
+        Event.objects.create(
+            index='host_security_posture',
+            host='test-host',
+            source='host_security_posture',
+            sourcetype='json',
+            data=json.dumps({
+                'type': 'host_security_posture',
+                'event_type': 'posture_changed',
+                'component': 'security_controls',
+                'data': controls,
+                'previous': {
+                    **controls,
+                    'secure_boot': {'state': 'available', 'enabled': False},
+                },
+            }),
+        )
+        Event.objects.create(
+            index='host_security_posture',
+            host='test-host',
+            source='host_security_posture',
+            sourcetype='json',
+            data=json.dumps({
+                'type': 'host_security_posture',
+                'event_type': 'collection_status',
+                'component': 'collector',
+                'data': {
+                    'state': 'ok',
+                    'components_collected': sorted(components),
+                    'components_failed': [],
+                    'issues': [],
+                    'collection_duration_ms': 15.0,
+                },
+            }),
+        )
+
+        call_command('seed_default_content', owner=DEV_SUPERUSER_USERNAME)
+        request = SimpleNamespace(user=self.owner)
+        posture_searches = SavedSearch.objects.filter(
+            owner=self.owner,
+            name__in={
+                panel.search.removeprefix('run_saved_search ').strip('"')
+                for dashboard in Dashboard.objects.filter(
+                    created_by=self.owner,
+                    name__in=self.POSTURE_DASHBOARDS,
+                )
+                for panel in dashboard.panels.all()
+            },
+        )
+
+        self.assertEqual(posture_searches.count(), 13)
+        for saved_search in posture_searches:
+            result = run_pipeline(None, saved_search.query, request=request)
+            rows = coerce_to_list_of_dicts(result)
+            self.assertIsInstance(rows, list, saved_search.name)
 
     def test_seed_is_idempotent(self):
         call_command('seed_default_content', owner=DEV_SUPERUSER_USERNAME)
