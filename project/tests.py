@@ -4,6 +4,7 @@ Tests for the project app.
 This module contains unit tests for profiles, authentication, and default permissions.
 """
 import json
+from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -25,8 +26,50 @@ from project.management.commands.rundev import (
 from search2.engine.core import parse_pipeline, run_pipeline
 from search2.models import SavedSearch
 from search2.utils import coerce_to_list_of_dicts
+from tools.container_healthcheck import indexer_is_healthy, main, web_is_healthy
 
 from .models import UserProfile
+
+
+class ContainerHealthcheckTests(TestCase):
+    @patch.dict(
+        'tools.container_healthcheck.os.environ',
+        {'SIEMATIC_TLS_ENABLED': 'True', 'CHERRYPY_PORT': '8443'},
+        clear=True,
+    )
+    @patch('tools.container_healthcheck.urllib.request.urlopen')
+    @patch('tools.container_healthcheck.ssl.create_default_context')
+    def test_web_probe_uses_configured_tls_port(self, create_context, urlopen):
+        response = urlopen.return_value.__enter__.return_value
+        response.status = 200
+        context = create_context.return_value
+
+        self.assertTrue(web_is_healthy())
+
+        urlopen.assert_called_once_with(
+            'https://127.0.0.1:8443/accounts/login/',
+            timeout=4,
+            context=context,
+        )
+
+    @patch.dict(
+        'tools.container_healthcheck.os.environ',
+        {'INDEXER_PORT': '5443'},
+        clear=True,
+    )
+    @patch('tools.container_healthcheck.socket.create_connection')
+    def test_indexer_probe_uses_configured_port(self, create_connection):
+        self.assertTrue(indexer_is_healthy())
+
+        create_connection.assert_called_once_with(
+            ('127.0.0.1', 5443),
+            timeout=4,
+        )
+
+    @patch('tools.container_healthcheck.web_is_healthy', side_effect=OSError('down'))
+    def test_failed_probe_returns_nonzero(self, web_probe):
+        with patch('tools.container_healthcheck.sys.stderr', StringIO()):
+            self.assertEqual(main(['web']), 1)
 
 
 class RundevSuperuserTests(TestCase):

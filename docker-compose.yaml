@@ -50,6 +50,12 @@ services:
       - siematic-db
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "tools/container_healthcheck.py", "web"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     restart: unless-stopped
 
   siematic-indexer:
@@ -84,6 +90,12 @@ services:
       - ./certs:/app/certs:ro
     depends_on:
       - siematic-db
+    healthcheck:
+      test: ["CMD", "python", "tools/container_healthcheck.py", "indexer"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     restart: unless-stopped
 
   siematic-agent:
@@ -120,6 +132,8 @@ services:
       - ./certs/siematic.crt:/app/certs/siematic.crt:ro
     depends_on:
       - siematic-db
+    healthcheck:
+      disable: true
     restart: unless-stopped
 
   siematic-crawler:
@@ -148,6 +162,8 @@ services:
       DATABASE_PORT: ${DATABASE_PORT}
     depends_on:
       - siematic-db
+    healthcheck:
+      disable: true
     restart: unless-stopped
 
 volumes:

@@ -61,12 +61,15 @@ loaded plugin, and a scheduled instance has valid cron syntax. If you use the
 default file backend, inspect `sent_emails/`. For a production
 backend, make sure that the SMTP variables are correct.
 
-## Misleading container health
+## Container health
 
-The image-level health check probes the web port and is inherited by the other
-application services. Agent, indexer, and crawler containers can therefore
-report `unhealthy` while their processes are working. Use process-specific logs
-and functional checks. See [Known Limitations](../reference/known-limitations.md).
+Compose runs service-specific health probes for the web and indexer services.
+The web probe requests the local login page. The indexer probe connects to its
+local TCP port.
+
+The agent and crawler do not expose health endpoints. Compose reports their
+process state without a synthetic health value. Inspect their logs and use the
+functional checks in the sections above.
 
 ## Run the test suite
 
