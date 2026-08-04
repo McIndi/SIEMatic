@@ -24,7 +24,7 @@ python manage.py rundev
 
 Open `https://localhost:8000/`. The local certificate is self-signed. For setup,
 deployment, administration, search syntax, plugin development, and API details,
-see the [documentation](https://mcindi.com/siematic/). `rundev` creates the
+see the [documentation](https://mcindi.com/SIEMatic/). `rundev` creates the
 `siematic-admin` development superuser and writes its generated password to
 `rundev-superuser.txt`. The ignored file is overwritten with a new password
 each time the command starts.
