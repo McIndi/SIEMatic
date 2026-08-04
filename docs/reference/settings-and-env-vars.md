@@ -42,3 +42,11 @@ accept `1`, `true`, `yes`, or `on` (case-insensitive); other values are false.
 | `SIEMATIC_INGEST_THROTTLE_RATE` | `20000/hour` | DRF event-ingestion throttle rate. |
 | `SIEMATIC_SEARCH_THROTTLE_RATE` | `120/min` | DRF search throttle rate. |
 | `SIEMATIC_TLS_ENABLED` | `False` | Enables HTTPS-oriented cookie, redirect, and HSTS settings. |
+
+## Python settings
+
+`SIEMATIC_SEARCH["SUMMARY_DATE_FORMATS"]` is an ordered list of Python
+`strptime` formats used to identify date columns in search-result summaries.
+Its defaults are `%Y-%m-%d`, `%Y-%m-%d %H:%M:%S`, `%m/%d/%Y`, and `%d/%m/%Y`.
+Add or replace entries in the Django settings module when result data uses a
+different date representation.

@@ -1,3 +1,4 @@
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -14,7 +15,13 @@ from search2.api import Search2RunView
 from search2.commands.run_saved_search import RunSavedSearchCommand
 from search2.engine.core import PipelineArgumentError, run_pipeline
 from .models import SavedSearch
-from .utils import coerce_to_list_of_dicts, debug_results_structure, debug_timestamp_fields, extract_field_names
+from .utils import (
+    analyze_column_type,
+    coerce_to_list_of_dicts,
+    debug_results_structure,
+    debug_timestamp_fields,
+    extract_field_names,
+)
 
 User = get_user_model()
 
@@ -311,6 +318,42 @@ class FieldExtractionTests(TestCase):
         self.assertIn("cpu_percent", debug_output)
         self.assertIn("host", debug_output)
         self.assertIn("created", debug_output)
+
+
+class SummaryDateFormatTests(TestCase):
+    def test_default_date_format_is_detected(self):
+        summary = analyze_column_type(['2026-08-03', '2026-08-04'])
+
+        self.assertEqual(summary['type'], 'datetime')
+
+    def test_numeric_values_remain_numeric(self):
+        summary = analyze_column_type(['2026.215', '2026.216'])
+
+        self.assertEqual(summary['type'], 'numeric')
+
+    def test_configured_custom_date_format_is_detected(self):
+        search_settings = {
+            **settings.SIEMATIC_SEARCH,
+            'SUMMARY_DATE_FORMATS': ['%Y.%j'],
+        }
+
+        with override_settings(SIEMATIC_SEARCH=search_settings):
+            summary = analyze_column_type(['2026.215', '2026.216'])
+
+        self.assertEqual(summary['type'], 'datetime')
+        self.assertEqual(summary['min_date'], datetime(2026, 8, 3))
+        self.assertEqual(summary['max_date'], datetime(2026, 8, 4))
+
+    def test_invalid_date_format_configuration_uses_defaults(self):
+        search_settings = {
+            **settings.SIEMATIC_SEARCH,
+            'SUMMARY_DATE_FORMATS': 'not-a-list',
+        }
+
+        with override_settings(SIEMATIC_SEARCH=search_settings):
+            summary = analyze_column_type(['2026-08-03', '2026-08-04'])
+
+        self.assertEqual(summary['type'], 'datetime')
 
 
 class TimestampDebugTests(TestCase):

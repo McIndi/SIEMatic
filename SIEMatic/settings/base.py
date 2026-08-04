@@ -338,6 +338,12 @@ SIEMATIC_SEARCH = {
         "search2.commands.join:JoinCmd",
     ],
     "MAX_ROWS": 10_000,
+    "SUMMARY_DATE_FORMATS": [
+        "%Y-%m-%d",
+        "%Y-%m-%d %H:%M:%S",
+        "%m/%d/%Y",
+        "%d/%m/%Y",
+    ],
     "ALLOWED_LOOKUPS": {
         "exact","iexact","contains","icontains","startswith","istartswith",
         "endswith","iendswith","in","gt","gte","lt","lte","range"

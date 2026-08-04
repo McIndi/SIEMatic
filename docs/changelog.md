@@ -6,6 +6,8 @@ title: Changelog
 
 ## Unreleased
 
+- Made summary date detection configurable through
+  `SIEMATIC_SEARCH["SUMMARY_DATE_FORMATS"]`.
 - Published the initial public alpha of SIEMatic. This release is early and
   may change without notice; production reliance requires a paid support
   contract (`sales@mcindi.com`).

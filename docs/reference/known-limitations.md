@@ -14,9 +14,8 @@ title: Known Limitations
   substantial CPU and memory.
 - DataFrame conversions have the same memory constraint. JSON values must be
   stored with numeric types for numeric aggregation.
-- Summary date detection recognizes common formats rather than arbitrary custom
-  formats. Numeric mode can be absent when all values are unique, and text
-  summaries show the three most common values.
+- Numeric mode can be absent when all values are unique, and text summaries
+  show the three most common values.
 - Dashboard sharing, versioned export/import, and packaged example dashboards or
   search packs are not provided.
 

@@ -3,6 +3,7 @@ import logging
 import time
 from itertools import chain
 from types import GeneratorType
+from django.conf import settings
 from django.db.models.query import QuerySet, ValuesIterable
 import statistics
 from collections import Counter
@@ -10,6 +11,41 @@ from datetime import datetime, date
 import re
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_SUMMARY_DATE_FORMATS = (
+    '%Y-%m-%d',
+    '%Y-%m-%d %H:%M:%S',
+    '%m/%d/%Y',
+    '%d/%m/%Y',
+)
+
+
+def _get_summary_date_formats():
+    """Return the configured, validated formats used for date inference."""
+    configured_formats = getattr(settings, 'SIEMATIC_SEARCH', {}).get(
+        'SUMMARY_DATE_FORMATS', DEFAULT_SUMMARY_DATE_FORMATS
+    )
+    if not isinstance(configured_formats, (list, tuple)):
+        logger.warning(
+            'SIEMATIC_SEARCH["SUMMARY_DATE_FORMATS"] must be a list or tuple; '
+            'using the default formats.'
+        )
+        return DEFAULT_SUMMARY_DATE_FORMATS
+
+    valid_formats = tuple(
+        date_format
+        for date_format in configured_formats
+        if isinstance(date_format, str) and date_format
+    )
+    if not valid_formats:
+        logger.warning(
+            'SIEMATIC_SEARCH["SUMMARY_DATE_FORMATS"] contains no valid formats; '
+            'using the default formats.'
+        )
+        return DEFAULT_SUMMARY_DATE_FORMATS
+    return valid_formats
+
+
 def _short_repr(obj, length=200):
     try:
         r = repr(obj)
@@ -327,6 +363,7 @@ def analyze_column_type(values):
     # Try to determine type and calculate statistics
     numeric_values = []
     date_values = []
+    summary_date_formats = _get_summary_date_formats()
     for v in non_null_values:
         try:
             if isinstance(v, (int, float)):
@@ -342,7 +379,7 @@ def analyze_column_type(values):
             if isinstance(v, (datetime, date)):
                 date_values.append(v)
             elif isinstance(v, str):
-                for fmt in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%m/%d/%Y', '%d/%m/%Y']:
+                for fmt in summary_date_formats:
                     try:
                         parsed_date = datetime.strptime(v, fmt)
                         date_values.append(parsed_date)
@@ -368,7 +405,13 @@ def analyze_column_type(values):
     
     logger.debug("Identified %d numeric values, %d date values", len(numeric_values), len(date_values))
     
-    if len(numeric_values) == len(non_null_values):
+    if len(date_values) == len(non_null_values):
+        logger.debug("Classifying column as datetime")
+        result['type'] = 'datetime'
+        if date_values:
+            result['min_date'] = min(date_values)
+            result['max_date'] = max(date_values)
+    elif len(numeric_values) == len(non_null_values):
         logger.debug("Classifying column as numeric")
         result['type'] = 'numeric'
         if numeric_values:
@@ -398,12 +441,6 @@ def analyze_column_type(values):
             except Exception as e:
                 logger.warning("Could not calculate std_dev: %s", e)
                 result['std_dev'] = 0.0
-    elif len(date_values) == len(non_null_values):
-        logger.debug("Classifying column as datetime")
-        result['type'] = 'datetime'
-        if date_values:
-            result['min_date'] = min(date_values)
-            result['max_date'] = max(date_values)
     else:
         logger.debug("Classifying column as text")
         result['type'] = 'text'

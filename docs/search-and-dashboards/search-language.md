@@ -79,7 +79,8 @@ join. Large joins can consume substantial CPU and memory.
 
 - JSON values used for numeric aggregation must be stored as numeric types.
 - DataFrame conversion can consume significant memory on large results.
-- Date inference in summary statistics recognizes common formats, not every
-  custom format.
+- Date inference in summary statistics uses the ordered `strptime` format list
+  in `SIEMATIC_SEARCH["SUMMARY_DATE_FORMATS"]`. Add a format to that setting
+  when search results use a custom date representation.
 - Numeric mode can be absent when every value is unique.
 - Text summaries show only the three most common values.
