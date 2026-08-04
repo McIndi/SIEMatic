@@ -1,4 +1,4 @@
-<!-- MILEMARKER: milestone=M0 lanes_ok=5/8 lag=2 updated=2026-08-04 -->
+<!-- MILEMARKER: milestone=M0 lanes_ok=6/8 lag=1 updated=2026-08-04 -->
 # Project Status
 
 This is an initial, evidence-based assessment. The inferred statuses need owner
@@ -18,7 +18,7 @@ confirmation. Status tokens are `OK`, `WIP`, `TODO`, `LAG`, and `N/A`. A lane is
 | 5 | Automation | WIP | Add release automation and a tested restore job. |
 | 6 | Tests | OK | Keep the full Django suite and coverage report as CI gates. |
 | 7 | Docs | OK | Add release-specific changelog entries as versions are published. |
-| 8 | Security | LAG | Pin runtime dependencies; add secret scanning, an SBOM, and artifact signing. |
+| 8 | Security | OK | Add secret scanning, an SBOM, and artifact signing as hardening beyond the M0 floor. |
 
 ## Evidence summary
 
@@ -34,9 +34,10 @@ confirmation. Status tokens are `OK`, `WIP`, `TODO`, `LAG`, and `N/A`. A lane is
 - Docs: MkDocs navigation, operations guides, generated references, a README,
   and a changelog exist and build in strict mode.
 - Security: authentication, model permissions, environment-loaded secrets, and
-  TLS settings exist. `SECURITY.md` and a CI `pip-audit` dependency-vulnerability
-  scan were added; runtime dependencies remain unpinned, and secret scan,
-  SAST, SBOM, and artifact-signing configuration are still missing.
+  TLS settings exist. `SECURITY.md`, a CI `pip-audit` dependency-vulnerability
+  scan, and fully pinned runtime and docs dependencies close the M0 security
+  floor. Secret scan, SAST, SBOM, and artifact-signing configuration remain
+  open as post-M0 hardening.
 
 ## Ripple audit for the summary date-format tracer bullet
 
@@ -63,6 +64,19 @@ confirmation. Status tokens are `OK`, `WIP`, `TODO`, `LAG`, and `N/A`. A lane is
 | Tests | No test-suite change; `pip-audit` ran clean locally against both requirement files before landing the CI job. |
 | Docs | No doc-site change; `SECURITY.md` added at the repository root. |
 | Security | Added `SECURITY.md` with a reporting path and threat-model note, and an automated dependency-vulnerability scan gating CI. Runtime dependency pinning is still open. |
+
+## Ripple audit for the dependency-pinning tracer bullet
+
+| Lane | Effect |
+|---|---|
+| Business logic | No behavior change. |
+| Interface | No endpoint or schema changed. |
+| Data | No model, stored-data, or migration change. |
+| Packaging | No artifact change; versioned, published artifact remains open. |
+| Automation | Existing CI install and dependency-scan steps consume the pinned files unchanged. |
+| Tests | Full local suite (122 tests) re-run against the pinned dependency set; no regressions. |
+| Docs | No doc-site content change; `mkdocs build --strict` re-verified against the pinned docs dependencies. |
+| Security | `requirements.txt` and `requirements-docs.txt` now pin exact versions for every direct and transitive dependency, closing the last open M0 security-floor item. While upgrading, a newly released `mkdocs-gen-files==0.6.1` and `mkdocs-literate-nav==0.6.3` were found to add a dependency on a package called `properdocs` that overwrites `sys.modules["mkdocs"]` to redirect all `mkdocs.*` imports to itself and prints messaging urging migration off MkDocs. This was treated as a supply-chain risk and avoided: those two packages are pinned to their prior versions (`0.6.0` / `0.6.2`), which depend only on `mkdocs` and were confirmed clean. Every other dependency is pinned at its current latest release. |
 
 ## The ripple rule
 

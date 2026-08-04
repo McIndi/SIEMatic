@@ -13,9 +13,9 @@ Goal: connect all eight lanes with the smallest real, releasable system.
 - [x] A smoke-capable automated test suite runs in CI.
 - [x] A README exists.
 - [x] The storage location and backup-and-restore procedure are documented.
-- [ ] The security floor is complete:
+- [x] The security floor is complete:
   - [x] Application secrets load from environment variables.
-  - [ ] Runtime dependencies are fully pinned.
+  - [x] Runtime dependencies are fully pinned.
   - [x] CI runs a dependency-vulnerability scan.
   - [x] Transport and TLS assumptions are documented.
   - [x] `SECURITY.md` contains a reporting path and initial threat-model note.
