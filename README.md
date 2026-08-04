@@ -9,7 +9,7 @@ and REST APIs.
 > [!WARNING]
 > **Early-release alpha.** SIEMatic is under active development and is shipping as an alpha. Interfaces, data formats, configuration, and features may change without notice, and stability is not guaranteed. Evaluate it in non-production environments. If you need to depend on SIEMatic for a production workload, contact **sales@mcindi.com** for a paid support contract.
 
-Read the full documentation at **https://mcindi.com/siematic/**.
+Read the full documentation at **https://mcindi.com/SIEMatic/**.
 
 ## Quick start
 
