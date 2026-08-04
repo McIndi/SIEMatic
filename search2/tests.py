@@ -59,6 +59,36 @@ class SavedSearchCRUDTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(SavedSearch.objects.filter(pk=ss.pk).exists())
 
+    @patch('search2.engine.core.run_pipeline', return_value=[{'host': 'preview-host'}])
+    def test_create_preview_embeds_rows_for_datatable(self, run_pipeline):
+        response = self.client.post(
+            reverse('savedsearch_create'),
+            {'name': 'Preview', 'query': 'search', 'preview': '1'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="search-results-json"')
+        self.assertContains(response, 'preview-host')
+        run_pipeline.assert_called_once()
+
+    @patch('search2.engine.core.run_pipeline', return_value=[{'host': 'edited-preview-host'}])
+    def test_update_preview_embeds_rows_for_datatable(self, run_pipeline):
+        saved_search = SavedSearch.objects.create(
+            owner=self.user,
+            name='Preview',
+            query='search',
+        )
+
+        response = self.client.post(
+            reverse('savedsearch_update', args=[saved_search.pk]),
+            {'name': 'Preview', 'query': 'search', 'preview': '1'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="search-results-json"')
+        self.assertContains(response, 'edited-preview-host')
+        run_pipeline.assert_called_once()
+
 
 class SavedSearchVisibilityTests(TestCase):
     def setUp(self):

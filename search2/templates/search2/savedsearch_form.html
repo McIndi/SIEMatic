@@ -54,6 +54,7 @@
         {% else %}
             <div class="table-responsive" style="max-width:100%; overflow-x:auto;">
             {% include 'components/search2/datatable.html' with results=preview_data %}
+            {{ preview_data|json_script:'search-results-json' }}
             </div>
         {% endif %}
         {% else %}
