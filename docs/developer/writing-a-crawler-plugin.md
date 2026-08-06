@@ -29,6 +29,37 @@ class ExampleCrawler(BaseCrawlerPlugin):
 Pass only supported severities: `low`, `medium`, `high`, or `critical`. MITRE
 tactic and technique strings are optional.
 
+```mermaid
+flowchart TD
+    A{Crawler type?}
+    B["Scheduled instance triggers run()"]
+    C["Daemon loop triggers run() on interval"]
+    D["run() starts"]
+    E["get_queryset(index=...) using db_alias"]
+    F[Iterate matching events]
+    G{Rule condition matched?}
+    H[Continue to next event]
+    I["create_finding(event, rule, severity, metadata)"]
+    J[Apply realert_cooldown and persist finding]
+    K[Invoke configured alert plugins]
+    L["run() returns"]
+
+    A -->|scheduled| B
+    A -->|daemon| C
+    B --> D
+    C --> D
+    D --> E
+    E --> F
+    F --> G
+    G -->|No| H
+    H --> F
+    G -->|Yes| I
+    I --> J
+    J --> K
+    K --> F
+    F -->|No more events| L
+```
+
 Register the fully qualified class path in `CRAWLER_PLUGINS`, then add at least
 one instance in `CRAWLER_CONFIGS`. The instance `name` must match the plugin name
 used by the loader. Choose `type="scheduled"` for bounded work or

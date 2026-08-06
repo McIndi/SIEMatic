@@ -7,6 +7,35 @@ title: Alerting
 When a crawler creates a finding, it invokes the alerting plugins named in that
 crawler instance. SIEMatic includes an email plugin.
 
+```mermaid
+sequenceDiagram
+    participant C as Crawler Plugin
+    participant F as Finding Service
+    participant A as Alert Plugin
+    participant E as Email Backend
+    participant R as Recipients
+
+    C->>F: create_finding(...)
+    F->>F: Check realert_cooldown
+    F->>F: Persist finding
+    F->>A: Invoke configured alert plugin(s)
+
+    alt File backend (default)
+        A->>E: send_mail(...)
+        E-->>A: Write message under sent_emails/
+    else SMTP backend
+        A->>E: send_mail(...)
+        E->>R: Deliver via SMTP
+        R-->>E: Accepted
+        E-->>A: Success
+    else Alert plugin error
+        A-->>F: Raise/log exception
+    end
+
+    A-->>F: Return control
+    F-->>C: Finding remains stored
+```
+
 ## Configure email delivery
 
 Register the plugin and its recipients in `SIEMatic/settings/crawler.py`:

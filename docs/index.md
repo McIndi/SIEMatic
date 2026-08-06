@@ -42,6 +42,23 @@ independently:
    REST API.
 5. The crawler role reads events and creates findings or removes expired data.
 
+```mermaid
+flowchart LR
+  AP[Agent Plugins\nHost and log events]
+  AS[Agent Sender\nProcess queue and batching]
+  IX[Indexer\nWebSocket ingest and validation]
+  DB[(Configured Database)]
+  WEB[Web Role\nSearch, dashboards, API, admin]
+  CR[Crawler Role\nFindings, alerts, retention]
+
+  AP --> AS
+  AS -->|Authenticated WebSocket| IX
+  IX --> DB
+  WEB -->|Read and write application data| DB
+  CR -->|Read events / write findings| DB
+  WEB -.->|Configure crawler plugins and rules| CR
+```
+
 The [Quickstart](quickstart.md) runs the web, indexer, and agent roles together
 for development. The [Operations Guide](operations/index.md) covers the
 PostgreSQL-backed Docker Compose deployment.
