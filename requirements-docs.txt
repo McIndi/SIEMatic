@@ -1,6 +1,6 @@
 # Direct docs-build dependencies.
-mkdocs-material==9.7.7
 mkdocstrings[python]==1.0.6
+mkdocs-mermaid2-plugin==1.2.3
 # Pinned below their latest releases (0.6.1 / 0.6.3): those versions add a
 # dependency on a package called "properdocs" that hijacks the `mkdocs`
 # import namespace and prints FUD urging a switch away from MkDocs. Treat any
@@ -26,7 +26,6 @@ mergedeep==1.3.4
 mkdocs==1.6.1
 mkdocs-autorefs==1.4.4
 mkdocs-get-deps==0.2.2
-mkdocs-material-extensions==1.3.1
 mkdocstrings-python==2.0.5
 packaging==26.2
 paginate==0.5.7

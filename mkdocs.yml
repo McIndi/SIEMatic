@@ -4,21 +4,11 @@ site_url: https://mcindi.com/siematic/
 repo_url: https://github.com/mcindi/SIEMatic
 
 theme:
-  name: material
-  palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
+  name: mkdocs
 
 plugins:
   - search
+  - mermaid2
   - gen-files:
       scripts:
         - tools/docs/generate_search_command_reference.py
