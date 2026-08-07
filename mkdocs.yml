@@ -1,6 +1,6 @@
 site_name: SIEMatic
 site_description: Documentation for the SIEMatic observability platform
-site_url: https://mcindi.com/siematic/
+site_url: https://www.mcindi.com/SIEMatic/
 repo_url: https://github.com/mcindi/SIEMatic
 
 theme:

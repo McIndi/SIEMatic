@@ -9,7 +9,7 @@ and REST APIs.
 > [!WARNING]
 > **Early-release alpha.** SIEMatic is under active development and is shipping as an alpha. Interfaces, data formats, configuration, and features may change without notice, and stability is not guaranteed. Evaluate it in non-production environments. If you need to depend on SIEMatic for a production workload, contact **sales@mcindi.com** for a paid support contract.
 
-Read the full documentation at **https://mcindi.com/SIEMatic/**.
+Read the full documentation at **https://www.mcindi.com/SIEMatic/**.
 
 ## Quick start
 
@@ -24,7 +24,7 @@ python manage.py rundev
 
 Open `https://localhost:8000/`. The local certificate is self-signed. For setup,
 deployment, administration, search syntax, plugin development, and API details,
-see the [documentation](https://mcindi.com/SIEMatic/). `rundev` creates the
+see the [documentation](https://www.mcindi.com/SIEMatic/). `rundev` creates the
 `siematic-admin` development superuser and writes its generated password to
 `rundev-superuser.txt`. The ignored file is overwritten with a new password
 each time the command starts.
