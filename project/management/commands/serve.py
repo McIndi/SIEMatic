@@ -48,6 +48,9 @@ class DjangoCherryPyServer(object):
             **self.server_config
         })
         cherrypy.tree.graft(self.wsgi_app, '/')
+        # Without this the server ignores SIGTERM, so a container stop waits out
+        # the full termination grace period and is then killed mid-request.
+        cherrypy.engine.signal_handler.subscribe()
         cherrypy.engine.start()
         cherrypy.engine.block()
 

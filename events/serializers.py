@@ -5,6 +5,7 @@ This module provides REST framework serializers for Event models,
 including bulk creation support.
 """
 
+import json
 import logging
 from rest_framework import serializers
 from .extractors import apply_extractions
@@ -23,6 +24,25 @@ class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
         fields = '__all__'
+
+    def to_internal_value(self, data):
+        """
+        Accept ``data`` as either a string or a JSON object.
+
+        ``Event.data`` is a text column, so a REST caller would otherwise have
+        to encode the payload itself while the WebSocket path encodes it for
+        them. Two payload shapes for one field is a trap for anyone writing a
+        shipper, so encode an object or array here and store a string as-is.
+
+        Args:
+            data: The incoming request payload for one event.
+
+        Returns:
+            dict: Validated data with ``data`` guaranteed to be a string.
+        """
+        if isinstance(data, dict) and isinstance(data.get('data'), (dict, list)):
+            data = {**data, 'data': json.dumps(data['data'])}
+        return super().to_internal_value(data)
 
     def create(self, validated_data):
         """

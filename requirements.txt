@@ -5,6 +5,7 @@ whitenoise==6.12.0
 CherryPy==18.10.0
 crispy-bootstrap5==2026.3
 djangorestframework==3.17.1
+mozilla-django-oidc==5.0.2
 drf-spectacular==0.30.0
 Markdown==3.10.3
 django-filter==26.1
@@ -54,6 +55,7 @@ packaging==26.2
 portend==3.2.1
 psycopg-binary==3.3.4
 pycparser==3.0
+PyJWT==2.13.0
 Pygments==2.20.0
 pyOpenSSL==26.4.0
 python-dateutil==2.9.0.post0

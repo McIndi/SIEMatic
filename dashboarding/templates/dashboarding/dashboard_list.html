@@ -27,7 +27,7 @@
                 buttons: ['copy', 'csv', 'excel', 'pdf', 'print']
               }
             },
-            order: [[3, 'desc']]  // Order by Created At descending
+            order: [[4, 'desc']]  // Order by Created At descending
         });
     });
 </script>
@@ -49,6 +49,7 @@
             <tr>
               <th>Name</th>
               <th>Description</th>
+              <th>Owner</th>
               <th>Panels</th>
               <th>Created At</th>
               <th>Actions</th>
@@ -59,15 +60,23 @@
             <tr>
               <td><a href="{% url 'dashboarding:dashboard_detail' dashboard.pk %}">{{ dashboard.name }}</a></td>
               <td>{{ dashboard.description|default:'-' }}</td>
+              <td>
+                {{ dashboard.created_by }}
+                {% if dashboard.shared %}<span class="badge bg-secondary">Shared</span>{% endif %}
+              </td>
               <td>{{ dashboard.panels.count }}</td>
               <td>{{ dashboard.created_at|date:"M d, Y H:i" }}</td>
               <td>
-                <a href="{% url 'dashboarding:dashboard_edit' dashboard.pk %}" class="btn btn-sm btn-primary me-1">Edit</a>
-                <a href="{% url 'dashboarding:dashboard_delete' dashboard.pk %}" class="btn btn-sm btn-danger">Delete</a>
+                {% if dashboard.created_by_id == user.pk %}
+                  <a href="{% url 'dashboarding:dashboard_edit' dashboard.pk %}" class="btn btn-sm btn-primary me-1">Edit</a>
+                  <a href="{% url 'dashboarding:dashboard_delete' dashboard.pk %}" class="btn btn-sm btn-danger">Delete</a>
+                {% else %}
+                  <span class="text-muted small">View only</span>
+                {% endif %}
               </td>
             </tr>
             {% empty %}
-            <tr><td colspan="5" class="text-center">No dashboards found.</td></tr>
+            <tr><td colspan="6" class="text-center">No dashboards found.</td></tr>
             {% endfor %}
           </tbody>
         </table>

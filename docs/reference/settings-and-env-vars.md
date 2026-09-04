@@ -40,6 +40,20 @@ accept `1`, `true`, `yes`, or `on` (case-insensitive); other values are false.
 | `INDEXER_SSL_KEY` | empty | Indexer TLS private-key path. |
 | `INDEXER_TLS` | value of `SIEMATIC_TLS_ENABLED` | Enables TLS for agent-to-indexer transport. |
 | `INDEXER_USERNAME` | none | Username used by an agent to authenticate to the indexer. |
+| `OIDC_GROUP_CLAIM` | `realm_access.roles` | Dotted path to the roles claim. Keycloak nests realm roles here. |
+| `OIDC_GROUP_MAP` | `{}` | JSON object mapping a provider role to the Django groups it grants, for example `{"rossoctl-admin": ["Registered User"]}`. Rewritten on every login. |
+| `OIDC_ISSUER` | empty | Realm issuer URL, for example `https://keycloak.example/realms/rossoctl`. Setting it turns provider login on; leaving it empty keeps local passwords as the only option. |
+| `OIDC_OP_AUTHORIZATION_ENDPOINT` | derived from `OIDC_ISSUER` | Override for a provider that does not use Keycloak's endpoint layout. |
+| `OIDC_OP_JWKS_ENDPOINT` | derived from `OIDC_ISSUER` | Override for the signing key set. |
+| `OIDC_OP_TOKEN_ENDPOINT` | derived from `OIDC_ISSUER` | Override for the token endpoint. |
+| `OIDC_OP_USER_ENDPOINT` | derived from `OIDC_ISSUER` | Override for the userinfo endpoint. |
+| `OIDC_PROVIDER_NAME` | `Keycloak` | Name shown on the login button. |
+| `OIDC_RP_CLIENT_ID` | empty | Client ID registered in the realm. Required once `OIDC_ISSUER` is set. |
+| `OIDC_RP_CLIENT_SECRET` | empty | Client secret for a confidential client. |
+| `OIDC_RP_SCOPES` | `openid email profile` | Scopes requested at login. |
+| `OIDC_RP_SIGN_ALGO` | `RS256` | Algorithm the provider signs tokens with. |
+| `OIDC_STAFF_ROLES` | empty | Comma-separated roles granting Django admin access. Empty means no role does. |
+| `OIDC_SUPERUSER_ROLES` | empty | Comma-separated roles granting superuser. Empty means no role does. |
 | `SIEMATIC_AGENT_SYSMON_ONLY` | `False` | Deprecated alias for `SIEMATIC_AGENT_CORE_ONLY`. |
 | `SIEMATIC_AGENT_CORE_ONLY` | `False` | Uses the cross-platform Sysmon, network-security, and host-security-posture plugins instead of platform defaults. |
 | `SIEMATIC_ANON_THROTTLE_RATE` | `20/hour` | DRF anonymous request throttle rate. |

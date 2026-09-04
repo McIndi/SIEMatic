@@ -35,6 +35,8 @@ if is_indexer:
         path('api-token-auth/', drf_auth_views.obtain_auth_token, name='api_token_auth'),
         path('accounts/', include('django.contrib.auth.urls')),
     ]
+    if settings.OIDC_ENABLED:
+        urlpatterns.append(path('oidc/', include('mozilla_django_oidc.urls')))
 else:
     # Normal mode: serve full application
     router = routers.DefaultRouter()
@@ -52,6 +54,8 @@ else:
         path('dashboarding/', include('dashboarding.urls')),
         path('findings/', include('crawlers.urls')),
     ]
+    if settings.OIDC_ENABLED:
+        urlpatterns.append(path('oidc/', include('mozilla_django_oidc.urls')))
     if settings.DEBUG and importlib.util.find_spec('debug_toolbar'):
         urlpatterns += [
             path('__debug__/', include('debug_toolbar.urls')),

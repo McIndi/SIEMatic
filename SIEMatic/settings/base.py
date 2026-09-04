@@ -88,6 +88,7 @@ INSTALLED_APPS = [
     'crispy_forms',
     'crispy_bootstrap5',
     'rest_framework',
+    'rest_framework.authtoken',
     'drf_spectacular',
     'django_filters',
     'channels',
@@ -129,6 +130,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'SIEMatic.context_processors.indexer_mode',
+                'SIEMatic.context_processors.oidc',
             ],
         },
     },
@@ -217,6 +219,58 @@ AUTH_USER_MODEL = 'project.CustomUser'
 
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
+
+
+# Authentication providers. Keycloak is optional and stays off until an issuer
+# is configured, so an existing deployment behaves exactly as before.
+OIDC_ISSUER = os.getenv('OIDC_ISSUER', '').rstrip('/')
+OIDC_ENABLED = bool(OIDC_ISSUER)
+OIDC_PROVIDER_NAME = os.getenv('OIDC_PROVIDER_NAME', 'Keycloak')
+
+# Keycloak publishes these four under the realm issuer. Set them individually
+# for a provider that lays its endpoints out differently.
+OIDC_OP_AUTHORIZATION_ENDPOINT = os.getenv(
+    'OIDC_OP_AUTHORIZATION_ENDPOINT', f'{OIDC_ISSUER}/protocol/openid-connect/auth'
+)
+OIDC_OP_TOKEN_ENDPOINT = os.getenv(
+    'OIDC_OP_TOKEN_ENDPOINT', f'{OIDC_ISSUER}/protocol/openid-connect/token'
+)
+OIDC_OP_USER_ENDPOINT = os.getenv(
+    'OIDC_OP_USER_ENDPOINT', f'{OIDC_ISSUER}/protocol/openid-connect/userinfo'
+)
+OIDC_OP_JWKS_ENDPOINT = os.getenv(
+    'OIDC_OP_JWKS_ENDPOINT', f'{OIDC_ISSUER}/protocol/openid-connect/certs'
+)
+
+OIDC_RP_CLIENT_ID = os.getenv('OIDC_RP_CLIENT_ID', '')
+OIDC_RP_CLIENT_SECRET = os.getenv('OIDC_RP_CLIENT_SECRET', '')
+OIDC_RP_SIGN_ALGO = os.getenv('OIDC_RP_SIGN_ALGO', 'RS256')
+OIDC_RP_SCOPES = os.getenv('OIDC_RP_SCOPES', 'openid email profile')
+
+# Where the provider's roles sit in the claims, and what each one grants.
+OIDC_GROUP_CLAIM = os.getenv('OIDC_GROUP_CLAIM', 'realm_access.roles')
+try:
+    OIDC_GROUP_MAP = json.loads(os.getenv('OIDC_GROUP_MAP') or '{}')
+except json.JSONDecodeError as error:
+    raise ImproperlyConfigured(f'OIDC_GROUP_MAP is not valid JSON: {error}')
+if not isinstance(OIDC_GROUP_MAP, dict):
+    raise ImproperlyConfigured('OIDC_GROUP_MAP must be a JSON object of role to group names.')
+
+# Both default to empty, so no realm role grants Django admin until someone
+# deliberately says which one should.
+OIDC_STAFF_ROLES = env_list('OIDC_STAFF_ROLES', [])
+OIDC_SUPERUSER_ROLES = env_list('OIDC_SUPERUSER_ROLES', [])
+
+AUTHENTICATION_BACKENDS = ['django.contrib.auth.backends.ModelBackend']
+if OIDC_ENABLED:
+    if not OIDC_RP_CLIENT_ID:
+        raise ImproperlyConfigured('OIDC_RP_CLIENT_ID is required when OIDC_ISSUER is set.')
+    # Keycloak first, local password second. The local account is the way back
+    # in when the provider is unreachable, which matters most in a system whose
+    # job is recording what happened.
+    AUTHENTICATION_BACKENDS.insert(0, 'project.oidc.SIEMaticOIDCBackend')
+    INSTALLED_APPS.append('mozilla_django_oidc')
+    LOGIN_REDIRECT_URL_FAILURE = '/accounts/login/'
 
 TLS_ENABLED = env_bool('SIEMATIC_TLS_ENABLED', False)
 SESSION_COOKIE_SECURE = TLS_ENABLED
@@ -321,6 +375,9 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        # Tokens first, so a shipper carries a revocable credential
+        # instead of a user's password.
+        'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.BasicAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],

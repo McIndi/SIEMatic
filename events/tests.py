@@ -2,6 +2,8 @@
 """
 Tests for the events app.
 """
+import json
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.test import TestCase
@@ -148,3 +150,64 @@ class LogfmtExtractionTests(TestCase):
         )
 
         self.assertEqual(event.extracted_fields, {'message': 'hello world'})
+
+
+class ObjectEventDataTests(TestCase):
+    """A shipper should be able to post an object without encoding it first."""
+
+    def setUp(self):
+        user = get_user_model().objects.create_user(username='shipper', password='shipper-pw')
+        user.groups.add(Group.objects.get(name='Agent'))
+        self.client = APIClient()
+        self.client.force_authenticate(user=user)
+
+    def test_object_data_is_encoded_and_extracted(self):
+        response = self.client.post(
+            reverse('event-list'),
+            {'sourcetype': 'json', 'data': {'message': 'hello', 'severity': 3}},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        event = Event.objects.get()
+        self.assertEqual(json.loads(event.data), {'message': 'hello', 'severity': 3})
+        self.assertEqual(event.extracted_fields, {'message': 'hello', 'severity': 3})
+
+    def test_string_data_is_stored_unchanged(self):
+        raw = 'time=2026-09-02T17:21:19.585Z level=INFO plugin=ibac'
+        response = self.client.post(
+            reverse('event-list'),
+            {'sourcetype': 'logfmt', 'data': raw},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        event = Event.objects.get()
+        self.assertEqual(event.data, raw)
+        self.assertEqual(event.extracted_fields['plugin'], 'ibac')
+
+    def test_list_data_is_encoded(self):
+        response = self.client.post(
+            reverse('event-list'),
+            {'sourcetype': 'default', 'data': [1, 2, 3]},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(json.loads(Event.objects.get().data), [1, 2, 3])
+
+    def test_bulk_post_accepts_both_shapes(self):
+        response = self.client.post(
+            reverse('event-list'),
+            [
+                {'sourcetype': 'json', 'data': {'message': 'object'}},
+                {'sourcetype': 'json', 'data': '{"message":"string"}'},
+            ],
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(
+            list(Event.objects.order_by('id').values_list('extracted_fields', flat=True)),
+            [{'message': 'object'}, {'message': 'string'}],
+        )

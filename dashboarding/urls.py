@@ -9,5 +9,6 @@ urlpatterns = [
     path('<int:pk>/edit/', views.dashboard_edit, name='dashboard_edit'),
     path('<int:pk>/delete/', views.dashboard_delete, name='dashboard_delete'),
     path('<int:pk>/', views.dashboard_detail, name='dashboard_detail'),
+    path('<int:pk>/data/', views.dashboard_data, name='dashboard_data'),
     path('panel/preview/', views.panel_preview, name='panel_preview'),
 ]

@@ -10,6 +10,10 @@ class Dashboard(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
     defaults = models.JSONField(default=dict, blank=True)
+    shared = models.BooleanField(
+        default=False,
+        help_text="Let every signed-in user view this dashboard. Editing and deleting stay with the owner.",
+    )
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

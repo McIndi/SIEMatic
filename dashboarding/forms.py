@@ -14,7 +14,7 @@ class PanelForm(forms.ModelForm):
 class DashboardForm(forms.ModelForm):
     class Meta:
         model = Dashboard
-        fields = ['name', 'description', 'defaults']
+        fields = ['name', 'description', 'defaults', 'shared']
 
 # Inline formset for Panels in Dashboard
 PanelFormSet = inlineformset_factory(

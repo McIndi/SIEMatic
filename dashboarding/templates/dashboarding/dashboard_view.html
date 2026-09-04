@@ -20,108 +20,112 @@
   <script src="{% static 'vendor/datatables/buttons/buttons.html5.min.js' %}"></script>
   <script src="{% static 'vendor/datatables/buttons/buttons.print.min.js' %}"></script>
   <script>
-    // Initialize DataTables
-    document.addEventListener("DOMContentLoaded", function () {
-      var tables = document.querySelectorAll(".search-results-table");
-      tables.forEach(function(table) {
-        if (table && window.jQuery && window.jQuery.fn.dataTable) {
-          if (!window.jQuery(table).hasClass('dataTable')) {
-            window.jQuery(table).DataTable({
-              pageLength: 25,
-              order: [],
-              responsive: true,
-              layout: {
-                topLeft: {
-                  buttons: ['copy', 'csv', 'excel', 'pdf', 'print']
-                }
-              }
-            });
-          }
-        }
-      });
-    });
+  (function () {
+    // Auto-refresh fetches JSON and updates the Chart.js and DataTables
+    // instances in place. Paging, sorting, and scroll position all survive,
+    // and nothing flashes. A full page submit stays available for the button
+    // and for browsers with JavaScript off.
+    const charts = new Map();
+    const tables = new Map();
+    let timer = null;
 
-    // Initialize Charts
-    document.addEventListener("DOMContentLoaded", function () {
-      const canvases = document.querySelectorAll('canvas[id^="chart-"]');
-      canvases.forEach(function(canvas) {
-        const ctx = canvas.getContext('2d');
-        const xField = canvas.dataset.xField;
-        const yField = canvas.dataset.yField;
-        const byField = canvas.dataset.byField;
-        const chartType = canvas.dataset.chartType || 'line';
+    function getByPath(obj, path) {
+      if (!obj || !path) return undefined;
+      return path.split('__').reduce((acc, k) => (acc == null ? acc : acc[k]), obj);
+    }
+
+    function formatLabel(v) {
+      if (v == null) return '';
+      const s = String(v);
+      // JavaScript accepts short numeric strings such as port numbers as
+      // dates (for example, "80" becomes a date in 1980). Only parse
+      // labels that have an ISO date prefix.
+      if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/.test(s)) {
+        return s;
+      }
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) {
+        return d.toISOString().slice(0, 19).replace('T', ' ');
+      }
+      return s;
+    }
+
+    function buildDatasets(rows, xField, yField, byField, chartType) {
+      const data = [];
+      const seriesMap = new Map();
+      for (const row of rows) {
+        const xValue = getByPath(row, xField);
+        const yValue = getByPath(row, yField);
+        const byValue = byField ? getByPath(row, byField) : null;
+        if (xValue == null || yValue == null) continue;
+        const x = formatLabel(xValue);
+        const y = Number(yValue);
+        if (x === '' || !Number.isFinite(y)) continue;
+        if (byField) {
+          const series = String(byValue || 'default');
+          if (!seriesMap.has(series)) seriesMap.set(series, []);
+          seriesMap.get(series).push({ x, y });
+        } else {
+          data.push({ x, y });
+        }
+      }
+
+      const shared = {
+        showLine: chartType === 'line',
+        tension: 0.1,
+        fill: false,
+        pointRadius: 3
+      };
+
+      if (byField) {
+        return Array.from(seriesMap.entries()).map(([series, points]) =>
+          Object.assign({ label: series, data: points }, shared)
+        );
+      }
+      return [Object.assign({ label: yField + ' by ' + xField, data: data }, shared)];
+    }
+
+    function initTables() {
+      document.querySelectorAll('.search-results-table').forEach(function (table) {
+        if (!window.jQuery || !window.jQuery.fn.dataTable) return;
+        const $table = window.jQuery(table);
+        if ($table.hasClass('dataTable')) return;
+        const api = $table.DataTable({
+          pageLength: 25,
+          order: [],
+          responsive: true,
+          layout: {
+            topLeft: { buttons: ['copy', 'csv', 'excel', 'pdf', 'print'] }
+          }
+        });
+        // Column order comes from the rendered header, and the server sends
+        // row objects keyed by those same names.
+        const columns = Array.from(table.querySelectorAll('thead th')).map(
+          (th) => th.textContent.trim()
+        );
+        tables.set(String(table.dataset.panelId), { api: api, columns: columns });
+      });
+    }
+
+    function initCharts() {
+      document.querySelectorAll('canvas[id^="chart-"]').forEach(function (canvas) {
         const panelId = canvas.id.replace('chart-', '');
         const jsonEl = document.getElementById(panelId);
         if (!jsonEl) return;
         const rows = JSON.parse(jsonEl.textContent || '[]');
         if (!rows.length) return;
 
-        function getByPath(obj, path) {
-          if (!obj || !path) return undefined;
-          return path.split('__').reduce((acc, k) => (acc == null ? acc : acc[k]), obj);
-        }
-
-        function formatLabel(v) {
-          if (v == null) return '';
-          const s = String(v);
-          // JavaScript accepts short numeric strings such as port numbers as
-          // dates (for example, "80" becomes a date in 1980). Only parse
-          // labels that have an ISO date prefix.
-          if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}(?:[T ].*)?$/.test(s)) {
-            return s;
-          }
-          const d = new Date(s);
-          if (!isNaN(d.getTime())) {
-            return d.toISOString().slice(0, 19).replace('T', ' ');
-          }
-          return s;
-        }
-
-        const data = [];
-        const seriesMap = new Map();
-        for (const row of rows) {
-          const xValue = getByPath(row, xField);
-          const yValue = getByPath(row, yField);
-          const byValue = byField ? getByPath(row, byField) : null;
-          if (xValue == null || yValue == null) continue;
-          const x = formatLabel(xValue);
-          const y = Number(yValue);
-          if (x === '' || !Number.isFinite(y)) continue;
-          if (byField) {
-            const series = String(byValue || 'default');
-            if (!seriesMap.has(series)) seriesMap.set(series, []);
-            seriesMap.get(series).push({ x, y });
-          } else {
-            data.push({ x, y });
-          }
-        }
-
-        const datasets = [];
-        if (byField) {
-          for (const [series, points] of seriesMap.entries()) {
-            datasets.push({
-              label: series,
-              data: points,
-              showLine: chartType === 'line',
-              tension: 0.1,
-              fill: false,
-              pointRadius: 3
-            });
-          }
-        } else {
-          datasets.push({
-            label: `${yField} by ${xField}`,
-            data: data,
-            showLine: chartType === 'line',
-            tension: 0.1,
-            fill: false,
-            pointRadius: 3
-          });
-        }
-
-        new Chart(ctx, {
-          type: chartType,
-          data: { datasets },
+        const chart = new Chart(canvas.getContext('2d'), {
+          type: canvas.dataset.chartType || 'line',
+          data: {
+            datasets: buildDatasets(
+              rows,
+              canvas.dataset.xField,
+              canvas.dataset.yField,
+              canvas.dataset.byField,
+              canvas.dataset.chartType || 'line'
+            )
+          },
           options: {
             responsive: true,
             maintainAspectRatio: false,
@@ -131,8 +135,178 @@
             }
           }
         });
+        charts.set(panelId, chart);
       });
+    }
+
+    function updateTable(panel) {
+      const entry = tables.get(String(panel.id));
+      if (!entry) return false;
+      const rows = (panel.data || []).map((row) =>
+        entry.columns.map((name) => {
+          const value = row[name];
+          return value == null ? '' : String(value);
+        })
+      );
+      entry.api.clear();
+      if (rows.length) entry.api.rows.add(rows);
+      // draw(false) redraws while holding the current page, so someone reading
+      // page 3 stays on page 3.
+      entry.api.draw(false);
+      return true;
+    }
+
+    function updateChart(panel) {
+      const chart = charts.get(String(panel.id));
+      if (!chart) return false;
+      chart.data.datasets = buildDatasets(
+        panel.data || [],
+        panel.x_field,
+        panel.y_field,
+        panel.by_field,
+        panel.chart_type
+      );
+      chart.update();
+      return true;
+    }
+
+    function showPanelError(panelId, message) {
+      const body = document.querySelector('[data-panel-body="' + panelId + '"]');
+      if (!body) return;
+      const el = body.querySelector('.panel-error');
+      if (!el) return;
+      if (message) {
+        el.textContent = 'Error: ' + message;
+        el.hidden = false;
+      } else {
+        el.textContent = '';
+        el.hidden = true;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      initTables();
+      initCharts();
+
+      const form = document.getElementById('dashboard-params-form');
+      const select = document.getElementById('refresh_seconds');
+      const countdown = document.getElementById('refresh-countdown');
+      // The countdown rewrites itself every second, so results and errors
+      // need their own element or they vanish before anyone reads them.
+      const result = document.getElementById('refresh-result');
+
+      function setResult(message, failed) {
+        result.textContent = message;
+        result.className = failed ? 'small text-danger' : 'text-muted small';
+      }
+      if (!form || !select) return;
+
+      const scrollKey = 'siematic-dashboard-scroll:' + window.location.pathname;
+      const reloadKey = 'siematic-dashboard-reloaded:' + window.location.pathname;
+
+      const saved = sessionStorage.getItem(scrollKey);
+      if (saved !== null) {
+        sessionStorage.removeItem(scrollKey);
+        window.scrollTo(0, parseInt(saved, 10) || 0);
+      }
+
+      function submitPreservingScroll() {
+        sessionStorage.setItem(scrollKey, String(window.scrollY));
+        form.submit();
+      }
+
+      function stopTimer() {
+        if (timer !== null) {
+          clearInterval(timer);
+          timer = null;
+        }
+      }
+
+      function refresh() {
+        fetch(form.dataset.dataUrl, {
+          method: 'POST',
+          body: new FormData(form),
+          credentials: 'same-origin',
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+          .then(function (response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+          })
+          .then(function (payload) {
+            const needDrawing = [];
+            payload.panels.forEach(function (panel) {
+              showPanelError(String(panel.id), panel.error);
+              if (panel.error) return;
+              const handled =
+                panel.visualization_type === 'table'
+                  ? updateTable(panel)
+                  : updateChart(panel);
+              if (handled) return;
+              // No instance to update. That is expected while a panel is
+              // empty, because an empty panel renders an alert instead of a
+              // table or a canvas. It only needs a reload once rows arrive and
+              // there is something to draw them into.
+              const rows = Array.isArray(panel.data) ? panel.data.length : 0;
+              if (rows > 0) needDrawing.push(panel.title);
+            });
+
+            if (needDrawing.length) {
+              // A panel that rendered empty has no table or canvas to update.
+              // Reload once to draw it, and only once, so a panel that stays
+              // empty cannot put the page in a reload loop.
+              if (sessionStorage.getItem(reloadKey)) {
+                stopTimer();
+                countdown.textContent = '';
+                setResult(
+                  'Reload to draw new rows in: ' + needDrawing.join(', '),
+                  true
+                );
+                return;
+              }
+              sessionStorage.setItem(reloadKey, '1');
+              submitPreservingScroll();
+              return;
+            }
+
+            sessionStorage.removeItem(reloadKey);
+            setResult('Updated ' + new Date().toLocaleTimeString(), false);
+          })
+          .catch(function (error) {
+            setResult('Refresh failed: ' + error.message, true);
+          });
+      }
+
+      function startTimer() {
+        stopTimer();
+        const seconds = parseInt(select.value, 10);
+        if (!seconds) {
+          countdown.textContent = '';
+          return;
+        }
+        let remaining = seconds;
+        countdown.textContent = 'Refreshing in ' + remaining + 's';
+        timer = setInterval(function () {
+          remaining -= 1;
+          if (remaining > 0) {
+            countdown.textContent = 'Refreshing in ' + remaining + 's';
+            return;
+          }
+          remaining = seconds;
+          refresh();
+        }, 1000);
+      }
+
+      // Changing the interval saves the choice through the same endpoint, so
+      // the dropdown no longer costs a page load.
+      select.addEventListener('change', function () {
+        refresh();
+        startTimer();
+      });
+
+      startTimer();
     });
+  })();
   </script>
 {% endblock %}
 
@@ -140,10 +314,29 @@
 <h1>{{ dashboard.name }}</h1>
 <p>{{ dashboard.description }}</p>
 
-<form method="post">
+<form method="post" id="dashboard-params-form"
+      data-data-url="{% url 'dashboarding:dashboard_data' dashboard.pk %}">
     {% csrf_token %}
     {{ params_form|crispy }}
-    <button type="submit" class="btn btn-primary">Run Searches</button>
+    <div class="row g-2 align-items-end mb-3">
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary">Run Searches</button>
+        </div>
+        <div class="col-auto">
+            <label for="refresh_seconds" class="form-label mb-1">Auto-refresh</label>
+            <select class="form-select" id="refresh_seconds" name="refresh_seconds">
+                {% for value, label in refresh_choices %}
+                    <option value="{{ value }}"{% if value == refresh_seconds %} selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto">
+            <span id="refresh-countdown" class="text-muted small"></span>
+        </div>
+        <div class="col-auto">
+            <span id="refresh-result" class="text-muted small"></span>
+        </div>
+    </div>
 </form>
 
 {% if panel_data %}
@@ -152,13 +345,13 @@
             <div class="card-header text-center">
                 <h5 class="mb-0">{{ item.panel.title }}</h5>
             </div>
-            <div class="card-body">
-                {% if item.error %}
-                    <p class="text-danger">Error: {{ item.error }}</p>
-                {% else %}
+            <div class="card-body" data-panel-body="{{ item.panel.id }}">
+                <p class="text-danger panel-error"{% if not item.error %} hidden{% endif %}>{% if item.error %}Error: {{ item.error }}{% endif %}</p>
+                {% if not item.error %}
                     {% if item.panel.visualization_type == 'table' %}
                         {% if item.data %}
-                            <table class="search-results-table display" style="width:100%">
+                            <table class="search-results-table display" style="width:100%"
+                                   data-panel-id="{{ item.panel.id }}">
                                 <thead>
                                     <tr>
                                         {% for field in item.data.0.keys %}

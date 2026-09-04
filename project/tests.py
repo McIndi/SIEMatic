@@ -517,3 +517,22 @@ class HealthEndpointTests(TestCase):
 
         self.assertEqual(client.get('/healthz').status_code, 200)
         self.assertEqual(client.get('/readyz').status_code, 200)
+
+
+class ServeSignalHandlingTests(TestCase):
+    """A container stop has to shut the server down, not wait for a SIGKILL."""
+
+    def test_run_subscribes_the_signal_handler_before_starting(self):
+        from project.management.commands.serve import DjangoCherryPyServer
+
+        server = DjangoCherryPyServer(Mock(), '0.0.0.0', 8000, {})
+        calls = []
+        with patch('project.management.commands.serve.cherrypy') as cherrypy:
+            cherrypy.engine.signal_handler.subscribe.side_effect = (
+                lambda: calls.append('subscribe')
+            )
+            cherrypy.engine.start.side_effect = lambda: calls.append('start')
+            cherrypy.engine.block.side_effect = lambda: calls.append('block')
+            server.run()
+
+        self.assertEqual(calls, ['subscribe', 'start', 'block'])
