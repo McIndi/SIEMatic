@@ -35,6 +35,18 @@ COPY --from=builder /app /app
 RUN mkdir -p /app/logs \
  && chown -R appuser:appuser /app
 RUN chown -R appuser:appuser /opt/venv
+# OpenShift and other hardened clusters ignore USER and run the container as an
+# arbitrary UID that is always a member of group 0. Granting group 0 the same
+# access as the owner is what makes the image work under both.
+RUN chgrp -R 0 /app /opt/venv \
+ && chmod -R g=u /app /opt/venv
 USER appuser
+# The default CMD runs the web role, so default the settings module to match.
+# Compose and the Kubernetes manifests override this per process for the
+# indexer, agent, and crawler roles.
+ENV DJANGO_SETTINGS_MODULE=SIEMatic.settings.web
+# HOME is unset when the container runs as a UID with no passwd entry, which
+# sends caches to / where nothing is writable.
+ENV HOME=/app
 EXPOSE 8000
 CMD ["python", "manage.py", "serve", "--host", "0.0.0.0","--port", "8000"]

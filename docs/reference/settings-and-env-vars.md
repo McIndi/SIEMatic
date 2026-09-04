@@ -17,9 +17,13 @@ accept `1`, `true`, `yes`, or `on` (case-insensitive); other values are false.
 | `DATABASE_USER` | empty | Database username. |
 | `DEFAULT_FROM_EMAIL` | `siematic@example.com` | Sender address for application email. |
 | `DJANGO_ALLOWED_HOSTS` | role-specific local hosts | Comma-separated hostnames accepted by Django. |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | empty | Comma-separated `scheme://host` origins Django accepts unsafe requests from. Set this to the external URL when running behind an ingress or route. |
 | `DJANGO_DEBUG` | `False` | Enables Django debug mode. Never enable in production. |
 | `DJANGO_LOG_LEVEL` | `INFO` | Python and Django logging level. |
+| `DJANGO_LOG_TO_FILE` | `True` | Writes logs to `logs/` in addition to stdout. Set false in containers, where the working directory may not be writable. |
 | `DJANGO_SECRET_KEY` | none (required) | Django signing secret; startup fails when absent or left at the placeholder. |
+| `DJANGO_TIME_ZONE` | `UTC` | Time zone used to render timestamps. Keep UTC when correlating with other systems. |
+| `DJANGO_TRUST_PROXY_PROTO_HEADER` | `False` | Reads the request scheme from `X-Forwarded-Proto`. Only enable when a trusted proxy sets that header. |
 | `EMAIL_BACKEND` | file-based backend | Django email backend import path. |
 | `EMAIL_HOST` | `localhost` | SMTP server hostname. |
 | `EMAIL_HOST_PASSWORD` | empty | SMTP password. |

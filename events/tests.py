@@ -88,3 +88,63 @@ class EventApiPermissionTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Event.objects.count(), 1)
+
+
+class LogfmtExtractionTests(TestCase):
+    """Cover the logfmt sourcetype used by Go services on the mesh."""
+
+    def test_quoted_value_keeps_its_spaces(self):
+        event = Event.objects.create(
+            sourcetype='logfmt',
+            data='time=2026-09-02T17:21:19.585Z level=INFO msg="pipeline: response frame cancelled" plugin=ibac',
+        )
+
+        self.assertEqual(
+            event.extracted_fields,
+            {
+                'time': '2026-09-02T17:21:19.585Z',
+                'level': 'INFO',
+                'msg': 'pipeline: response frame cancelled',
+                'plugin': 'ibac',
+            },
+        )
+
+    def test_sourcetype_match_is_case_insensitive(self):
+        event = Event.objects.create(sourcetype='LogFmt', data='level=WARN')
+
+        self.assertEqual(event.extracted_fields, {'level': 'WARN'})
+
+    def test_bare_tokens_are_skipped(self):
+        event = Event.objects.create(
+            sourcetype='logfmt',
+            data='starting level=INFO ready',
+        )
+
+        self.assertEqual(event.extracted_fields, {'level': 'INFO'})
+
+    def test_value_containing_an_equals_sign_is_kept_whole(self):
+        event = Event.objects.create(
+            sourcetype='logfmt',
+            data='url="https://example.test/?a=1&b=2" code=200',
+        )
+
+        self.assertEqual(
+            event.extracted_fields,
+            {'url': 'https://example.test/?a=1&b=2', 'code': '200'},
+        )
+
+    def test_unbalanced_quote_still_yields_the_fields_before_it(self):
+        event = Event.objects.create(
+            sourcetype='logfmt',
+            data='level=ERROR msg="unterminated',
+        )
+
+        self.assertEqual(event.extracted_fields['level'], 'ERROR')
+
+    def test_json_sourcetype_is_not_parsed_as_logfmt(self):
+        event = Event.objects.create(
+            sourcetype='json',
+            data='{"message":"hello world"}',
+        )
+
+        self.assertEqual(event.extracted_fields, {'message': 'hello world'})

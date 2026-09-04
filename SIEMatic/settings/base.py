@@ -19,12 +19,15 @@ import platform
 import sys
 import threading
 from django.core.exceptions import ImproperlyConfigured
-from events.extractors import is_json_sourcetype, extract_json
+from events.extractors import (
+    is_json_sourcetype,
+    extract_json,
+    is_logfmt_sourcetype,
+    extract_logfmt,
+)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-LOG_DIR = BASE_DIR / 'logs'
-LOG_DIR.mkdir(parents=True, exist_ok=True)
 SECRET_KEY_PLACEHOLDER = 'replace-me-with-a-generated-secret-key'
 
 
@@ -40,6 +43,16 @@ def env_list(name, default):
     if value is None:
         return list(default)
     return [item.strip() for item in value.split(',') if item.strip()]
+
+
+# File logging suits a workstation or a Compose stack. Under Kubernetes the
+# container often runs as an arbitrary UID with no writable working directory,
+# and the collector reads stdout anyway, so the directory creation below has to
+# be optional or the process dies at import time.
+LOG_TO_FILE = env_bool('DJANGO_LOG_TO_FILE', True)
+LOG_DIR = BASE_DIR / 'logs'
+if LOG_TO_FILE:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # Quick-start development settings - unsuitable for production
@@ -165,7 +178,9 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'America/New_York'
+# Correlating events from several sources works only when every timestamp is
+# rendered in one zone. Default to UTC, which is what most log shippers emit.
+TIME_ZONE = os.getenv('DJANGO_TIME_ZONE', 'UTC')
 
 USE_I18N = True
 
@@ -211,6 +226,21 @@ SECURE_HSTS_SECONDS = 31536000 if TLS_ENABLED else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = TLS_ENABLED
 SECURE_HSTS_PRELOAD = TLS_ENABLED
 
+# Kubernetes probes speak plain HTTP to the pod IP. Redirecting them to
+# HTTPS makes every probe a 301 and every pod perpetually unready.
+SECURE_REDIRECT_EXEMPT = [r'^healthz$', r'^readyz$']
+
+# Django 6 checks the Origin header on unsafe requests, so every hostname a
+# browser reaches the site by has to be listed here with its scheme.
+CSRF_TRUSTED_ORIGINS = env_list('DJANGO_CSRF_TRUSTED_ORIGINS', [])
+
+# When a load balancer or ingress handles TLS, the request arrives over plain
+# HTTP and SECURE_SSL_REDIRECT loops forever unless Django reads the scheme from
+# the forwarded header. Only turn this on where the proxy sets that header
+# itself, because a client can otherwise forge it.
+if env_bool('DJANGO_TRUST_PROXY_PROTO_HEADER', False):
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 # Agent-to-indexer transport security.  This is separate from TLS_ENABLED
 # because agents may connect to an indexer deployed on another host.
 INDEXER_TLS = env_bool('INDEXER_TLS', TLS_ENABLED)
@@ -234,6 +264,7 @@ SEARCH_THROTTLE_RATE = os.getenv('SIEMATIC_SEARCH_THROTTLE_RATE', '120/min')
 ANON_THROTTLE_RATE = os.getenv('SIEMATIC_ANON_THROTTLE_RATE', '20/hour')
 
 LOG_LEVEL = os.getenv('DJANGO_LOG_LEVEL', 'INFO').upper()
+LOG_HANDLERS = ['console', 'file'] if LOG_TO_FILE else ['console']
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -253,20 +284,14 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'verbose' if DEBUG else 'simple',
         },
-        'file': {
-            'level': LOG_LEVEL,
-            'class': 'logging.FileHandler',
-            'filename': LOG_DIR / f'{sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else sys.argv[0]}.log',
-            'formatter': 'verbose',
-        },
     },
     'root': {
-        'handlers': ['console', 'file'],
+        'handlers': LOG_HANDLERS,
         'level': LOG_LEVEL,
     },
     'loggers': {
         'django': {
-            'handlers': ['console', 'file'],
+            'handlers': LOG_HANDLERS,
             'level': LOG_LEVEL,
             'propagate': False,
         },
@@ -277,6 +302,14 @@ LOGGING = {
         }
     },
 }
+
+if LOG_TO_FILE:
+    LOGGING['handlers']['file'] = {
+        'level': LOG_LEVEL,
+        'class': 'logging.FileHandler',
+        'filename': LOG_DIR / f'{sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else sys.argv[0]}.log',
+        'formatter': 'verbose',
+    }
 
 # Log level from environment variable
 LOGGING['root']['level'] = os.getenv('DJANGO_LOG_LEVEL', 'DEBUG' if DEBUG else 'WARNING').upper()
@@ -317,6 +350,7 @@ SPECTACULAR_SETTINGS = {
 
 FIELD_EXTRACTIONS = {
     is_json_sourcetype: extract_json,
+    is_logfmt_sourcetype: extract_logfmt,
 }
 
 SIEMATIC_SEARCH = {

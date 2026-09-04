@@ -6,11 +6,13 @@ This module defines URL patterns for authentication, user profiles, and landing 
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.views import LogoutView, PasswordResetView
-from .views import landing_page, profile_view
+from .views import landing_page, profile_view, healthz, readyz
 from django.contrib.auth.decorators import login_required
 
 urlpatterns = [
     path('', landing_page, name='landing_page'),
+    path('healthz', healthz, name='healthz'),
+    path('readyz', readyz, name='readyz'),
     path('login/', auth_views.LoginView.as_view(template_name='login.html'), name='login'),
     path('logout/', login_required(LogoutView.as_view(next_page='login')), name='logout'),
     path('password_reset/', PasswordResetView.as_view(), name='password_reset'),

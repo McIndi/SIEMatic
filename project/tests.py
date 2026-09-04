@@ -14,7 +14,8 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.forms.models import model_to_dict
-from django.test import TestCase, Client
+from django.db.utils import OperationalError
+from django.test import TestCase, Client, override_settings
 from django.urls import NoReverseMatch, reverse
 
 from dashboarding.models import Dashboard, Panel
@@ -486,3 +487,33 @@ class LoginLogoutTests(TestCase):
         self.client.login(username='loginuser', password='testpass')
         response = self.client.post(reverse('logout'))
         self.assertEqual(response.status_code, 302)
+
+
+class HealthEndpointTests(TestCase):
+    """The endpoints Kubernetes probes hit. They must not require a login."""
+
+    def test_healthz_is_open_and_returns_ok(self):
+        response = Client().get('/healthz')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b'ok')
+
+    def test_readyz_reports_ok_when_the_database_answers(self):
+        response = Client().get('/readyz')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b'ok')
+
+    def test_readyz_reports_503_when_the_database_is_down(self):
+        with patch('project.views.connections') as connections:
+            connections.__getitem__.return_value.cursor.side_effect = OperationalError('no route to host')
+            response = Client().get('/readyz')
+
+        self.assertEqual(response.status_code, 503)
+
+    @override_settings(SECURE_SSL_REDIRECT=True)
+    def test_probes_are_not_redirected_to_https(self):
+        client = Client()
+
+        self.assertEqual(client.get('/healthz').status_code, 200)
+        self.assertEqual(client.get('/readyz').status_code, 200)

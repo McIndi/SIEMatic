@@ -7,6 +7,7 @@ from event raw data, such as JSON parsing.
 
 import json
 import logging
+import shlex
 
 from django.conf import settings
 
@@ -92,3 +93,50 @@ def extract_json(event):
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse JSON from event data: {e}")
         raise
+
+
+def is_logfmt_sourcetype(event):
+    """
+    Check if the event sourcetype is logfmt.
+
+    Args:
+        event: The event object to check.
+
+    Returns:
+        bool: True if sourcetype is 'logfmt', False otherwise.
+    """
+    result = event.sourcetype.lower() == "logfmt"
+    logger.debug(f"Event sourcetype '{event.sourcetype}' is logfmt: {result}")
+    return result
+
+
+def extract_logfmt(event):
+    """
+    Extract key=value pairs from a logfmt line.
+
+    This is the format Go's ``log/slog`` TextHandler writes, and what most Go
+    services on a service mesh emit. Values may be double-quoted to carry
+    spaces. Tokens without an ``=`` are skipped rather than treated as an
+    error, because a shipper cannot guarantee every line is well formed.
+
+    Args:
+        event: The event object containing the raw log line.
+
+    Returns:
+        dict: Parsed key/value pairs. Empty when the line holds none.
+    """
+    try:
+        tokens = shlex.split(event.data)
+    except ValueError as e:
+        # Unbalanced quotes. Fall back to whitespace splitting so a malformed
+        # line still yields the fields that come before the break.
+        logger.debug(f"logfmt line did not tokenize cleanly, splitting on whitespace: {e}")
+        tokens = event.data.split()
+
+    fields = {}
+    for token in tokens:
+        key, sep, value = token.partition("=")
+        if sep and key:
+            fields[key] = value
+    logger.debug(f"Extracted {len(fields)} logfmt fields")
+    return fields

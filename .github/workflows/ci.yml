@@ -94,7 +94,49 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build Docker image
-        run: docker build --build-arg DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY}" .
+        run: docker build --build-arg DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY}" -t siematic:ci .
+
+      # OpenShift runs containers as a UID from the namespace range, in group 0,
+      # ignoring the image's USER. This UID is in no group inside the image, so
+      # the container only starts if group 0 owns what it needs to read and
+      # write. Without this check that breakage is only found on a cluster.
+      - name: Start the image as an arbitrary UID
+        run: |
+          docker run -d --name siematic-uid-check \
+            --user 1000670000:0 \
+            -e DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY}" \
+            -e DJANGO_LOG_TO_FILE=False \
+            -p 8000:8000 \
+            siematic:ci
+
+      - name: Wait for the health endpoint
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/healthz | grep -q '^ok$'; then
+              echo "healthz answered after ${attempt}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "healthz never answered" >&2
+          docker logs siematic-uid-check
+          exit 1
+
+      - name: Check the readiness endpoint
+        run: curl -fsS http://127.0.0.1:8000/readyz | grep -q '^ok$'
+
+      - name: Confirm the process is not running as root
+        run: |
+          uid=$(docker exec siematic-uid-check id -u)
+          test "$uid" = "1000670000" || { echo "unexpected uid $uid" >&2; exit 1; }
+
+      - name: Show container logs
+        if: always()
+        run: docker logs siematic-uid-check || true
+
+      - name: Remove the container
+        if: always()
+        run: docker rm -f siematic-uid-check || true
 
   dependency-scan:
     runs-on: ubuntu-latest
