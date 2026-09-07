@@ -11,13 +11,83 @@ from unittest.mock import Mock, patch
 
 import psutil
 
-from django.test import SimpleTestCase, override_settings
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
+from django.db import IntegrityError, transaction
+from django.test import SimpleTestCase, TestCase, override_settings
 
+from agent.models import Agent, BatchReceipt, Checkpoint
 from agent.plugins.plugin_process_manager import get_indexer_transport, sender_process
 from agent.plugins.host_security_posture_plugin import HostSecurityPosturePlugin
 from agent.plugins.network_security_plugin import NetworkSecurityPlugin
 from agent.plugins.watchdog_plugin import WatchdogPlugin
 from tools.gen_dev_cert import generate_certificate
+
+
+class CheckpointModelTests(TestCase):
+    def test_agent_and_checkpoint_identity_are_unique(self):
+        user = get_user_model().objects.create_user(username='shipper')
+        agent = Agent.objects.create(
+            agent_id='cluster-a',
+            user=user,
+            hostname='node-a',
+            address='192.0.2.10',
+            version='1.0',
+        )
+        Checkpoint.objects.create(
+            target='kube_logs:pod-a:container-a',
+            cursor='cursor-1',
+            agent=agent,
+            index='kubernetes',
+            source='pod-a/container-a',
+        )
+
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Agent.objects.create(agent_id='cluster-a')
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Checkpoint.objects.create(
+                target='kube_logs:pod-a:container-a',
+                cursor='cursor-2',
+            )
+
+    def test_batch_receipt_identity_is_scoped_to_target(self):
+        BatchReceipt.objects.create(
+            target='keycloak:realm-a',
+            batch_id='batch-1',
+            content_digest='a' * 64,
+            cursor='cursor-1',
+            count=2,
+        )
+        BatchReceipt.objects.create(
+            target='keycloak:realm-b',
+            batch_id='batch-1',
+            content_digest='a' * 64,
+            cursor='cursor-1',
+            count=2,
+        )
+
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            BatchReceipt.objects.create(
+                target='keycloak:realm-a',
+                batch_id='batch-1',
+                content_digest='b' * 64,
+                cursor='cursor-2',
+                count=1,
+            )
+
+    def test_agent_group_has_only_shipper_permissions(self):
+        group = Group.objects.get(name='Agent')
+
+        self.assertEqual(
+            set(group.permissions.values_list('content_type__app_label', 'codename')),
+            {
+                ('events', 'add_event'),
+                ('agent', 'add_agent'),
+                ('agent', 'change_agent'),
+                ('agent', 'add_checkpoint'),
+                ('agent', 'change_checkpoint'),
+            },
+        )
 
 
 class IndexerTransportTests(SimpleTestCase):
