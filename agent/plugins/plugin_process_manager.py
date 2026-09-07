@@ -114,6 +114,44 @@ def get_session_cookie(indexer_cfg, credentials):
             return None
         return sessionid
 
+async def authenticate(indexer_cfg, credentials, max_retries=5):
+    """
+    Log in to the indexer and return a session cookie.
+
+    Called before every connection attempt rather than once at startup. A
+    Django session expires, and the indexer rejects the WebSocket handshake
+    when it does. Reusing the cookie obtained at startup means every later
+    reconnect presents the same dead credential, so the sender retries
+    forever without ever sending another event.
+
+    Args:
+        indexer_cfg: The indexer configuration.
+        credentials: Mapping with username and password.
+        max_retries: Attempts before giving up.
+
+    Returns:
+        str or None: The session cookie, or None if every attempt failed.
+    """
+    for attempt in range(max_retries):
+        try:
+            sessionid = get_session_cookie(indexer_cfg, credentials)
+        except requests.RequestException:
+            # A refused connection or a DNS failure during login is the
+            # normal case while the indexer is still starting, and is worth
+            # another attempt rather than ending the process.
+            logger.exception("Could not reach the indexer to authenticate")
+            sessionid = None
+        if sessionid:
+            return sessionid
+        wait_time = 2 ** attempt  # exponential backoff
+        logger.warning(
+            "Login failed, retrying in %s seconds (attempt %d/%d)",
+            wait_time, attempt + 1, max_retries,
+        )
+        await asyncio.sleep(wait_time)
+    return None
+
+
 def sender_process(event_queue, indexer_cfg, credentials=None):
     """
     Send events to the indexer via WebSocket.
@@ -123,50 +161,53 @@ def sender_process(event_queue, indexer_cfg, credentials=None):
         host = indexer_cfg.get('host', 'localhost')
         port = indexer_cfg.get('port', 8000)
         transport = get_indexer_transport(indexer_cfg)
-        headers = {}
-        retry_count = 0
-        max_retries = 5
-        while retry_count < max_retries:
-            sessionid = get_session_cookie(indexer_cfg, credentials)
-            if sessionid:
-                headers['Cookie'] = f"sessionid={sessionid}"
-                break
-            else:
-                wait_time = 2 ** retry_count  # exponential backoff
-                logger.warning(f"Login failed, retrying in {wait_time} seconds (attempt {retry_count + 1}/{max_retries})")
-                await asyncio.sleep(wait_time)
-                retry_count += 1
-        if not sessionid:
-            logger.error("Failed to authenticate after retries, sender_process exiting")
-            return
         uri = f"{transport['websocket_scheme']}://{host}:{port}/indexer/"
-        logger.info(f"Connecting to WebSocket {uri} with headers {headers}")
-        connect_options = {'additional_headers': headers}
-        if transport['websocket_ssl'] is not None:
-            connect_options['ssl'] = transport['websocket_ssl']
+
+        # Held across reconnects on purpose. A batch drained from the queue is
+        # gone from it, so if the send fails the only remaining copy is here.
+        # Clearing it inside the connection loop loses every event in flight
+        # whenever the indexer restarts. Bounded by the drain limit below,
+        # because nothing is drained while a batch is still owed.
+        pending = []
+
         while True:
+            sessionid = await authenticate(indexer_cfg, credentials)
+            if not sessionid:
+                logger.error("Failed to authenticate after retries, sender_process exiting")
+                return
+            connect_options = {
+                'additional_headers': {'Cookie': f"sessionid={sessionid}"},
+            }
+            if transport['websocket_ssl'] is not None:
+                connect_options['ssl'] = transport['websocket_ssl']
+            logger.info(f"Connecting to WebSocket {uri}")
             try:
                 async with websockets.connect(uri, **connect_options) as websocket:
                     logger.info(f"WebSocket connection established to {uri}")
                     while True:
-                        # Drain queue with soft limits
-                        batch = []
-                        deadline = time.time() + 0.5
-                        while len(batch) < 500 and time.time() < deadline:
-                            try:
-                                batch.append(event_queue.get_nowait())
-                            except Exception:
-                                break
-                        if not batch:
+                        if not pending:
+                            # Drain queue with soft limits
+                            deadline = time.time() + 0.5
+                            while len(pending) < 500 and time.time() < deadline:
+                                try:
+                                    pending.append(event_queue.get_nowait())
+                                except Exception:
+                                    break
+                            # Normalize type
+                            for ev in pending:
+                                if 'type' not in ev:
+                                    ev['type'] = 'event'
+                        if not pending:
                             await asyncio.sleep(0.1)
                             continue
-                        # Normalize type
-                        for ev in batch:
-                            if 'type' not in ev:
-                                ev['type'] = 'event'
-                        await websocket.send(json.dumps(batch))
+                        await websocket.send(json.dumps(pending))
+                        pending = []
             except Exception as e:
                 logger.exception(f"Exception in sender_process WebSocket loop: {e}")
+                if pending:
+                    logger.warning(
+                        "Holding %d event(s) for the next connection", len(pending)
+                    )
                 await asyncio.sleep(2)
     try:
         asyncio.run(send_events())

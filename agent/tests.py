@@ -13,7 +13,7 @@ import psutil
 
 from django.test import SimpleTestCase, override_settings
 
-from agent.plugins.plugin_process_manager import get_indexer_transport
+from agent.plugins.plugin_process_manager import get_indexer_transport, sender_process
 from agent.plugins.host_security_posture_plugin import HostSecurityPosturePlugin
 from agent.plugins.network_security_plugin import NetworkSecurityPlugin
 from agent.plugins.watchdog_plugin import WatchdogPlugin
@@ -51,6 +51,128 @@ class IndexerTransportTests(SimpleTestCase):
                 'tls': True,
                 'ca_bundle': 'missing-ca.pem',
             })
+
+
+class _StopSender(BaseException):
+    """
+    Ends the sender loop from inside a test.
+
+    A BaseException rather than an Exception because the sender catches
+    Exception in two places and would otherwise reconnect forever.
+    """
+
+
+class _FakeWebSocket:
+    def __init__(self, outcomes, sent):
+        self._outcomes = outcomes
+        self._sent = sent
+
+    async def send(self, payload):
+        self._sent.append(payload)
+        outcome = self._outcomes.pop(0)
+        if outcome is not None:
+            raise outcome
+
+
+def _fake_connect(outcomes, sent, cookies):
+    """Stand in for websockets.connect, recording the cookie it was given."""
+    class _Connection:
+        def __init__(self, _uri, **options):
+            cookies.append(options['additional_headers']['Cookie'])
+
+        async def __aenter__(self):
+            return _FakeWebSocket(outcomes, sent)
+
+        async def __aexit__(self, *_exc):
+            return False
+
+    return _Connection
+
+
+def _no_sleep(limit=50):
+    """
+    Skip the reconnect backoff, and stop the sender if it idles.
+
+    Without the limit a regression does not fail the test, it hangs it: the
+    sender that drops its batch goes back to polling an empty queue and never
+    sends again, so the assertion is never reached.
+    """
+    calls = {'n': 0}
+
+    async def sleep(_seconds):
+        calls['n'] += 1
+        if calls['n'] > limit:
+            raise _StopSender()
+
+    return sleep
+
+
+class SenderProcessTests(SimpleTestCase):
+    """
+    The two ways the sender silently stopped delivering events.
+
+    Both were found by reading the code rather than from a failure report, so
+    these exist to keep them from coming back.
+    """
+
+    def _run(self, outcomes, queued, cookies_returned):
+        queue = Queue()
+        for event in queued:
+            queue.put(event)
+        sent = []
+        cookies = []
+
+        with patch(
+            'agent.plugins.plugin_process_manager.get_session_cookie',
+            side_effect=cookies_returned,
+        ), patch(
+            'agent.plugins.plugin_process_manager.websockets.connect',
+            _fake_connect(outcomes, sent, cookies),
+        ), patch(
+            'agent.plugins.plugin_process_manager.asyncio.sleep',
+            _no_sleep(),
+        ):
+            with self.assertRaises(_StopSender):
+                sender_process(queue, {'tls': False}, {'username': 'a', 'password': 'b'})
+
+        return sent, cookies
+
+    def test_a_batch_that_fails_to_send_is_kept_for_the_next_connection(self):
+        # The queue is drained before the send, so a batch dropped here is
+        # gone. An indexer restart used to lose everything in flight.
+        sent, _cookies = self._run(
+            outcomes=[ConnectionResetError('indexer restarted'), _StopSender()],
+            queued=[{'data': 'only event'}],
+            cookies_returned=['first', 'second'],
+        )
+
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(json.loads(sent[0]), json.loads(sent[1]))
+        self.assertEqual(json.loads(sent[1])[0]['data'], 'only event')
+
+    def test_each_reconnect_authenticates_again(self):
+        # Logging in once at startup meant an expired session produced an
+        # endless reconnect loop with a cookie the indexer always rejects.
+        _sent, cookies = self._run(
+            outcomes=[ConnectionResetError('session expired'), _StopSender()],
+            queued=[{'data': 'only event'}],
+            cookies_returned=['first', 'second'],
+        )
+
+        self.assertEqual(cookies, ['sessionid=first', 'sessionid=second'])
+
+    def test_giving_up_on_login_stops_rather_than_looping(self):
+        queue = Queue()
+        with patch(
+            'agent.plugins.plugin_process_manager.get_session_cookie',
+            return_value=None,
+        ) as login, patch(
+            'agent.plugins.plugin_process_manager.asyncio.sleep',
+            _no_sleep(),
+        ):
+            sender_process(queue, {'tls': False}, {'username': 'a', 'password': 'b'})
+
+        self.assertEqual(login.call_count, 5)
 
 
 class WatchdogPluginTests(SimpleTestCase):
