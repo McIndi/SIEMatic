@@ -19,6 +19,8 @@ INDEXER_CREDENTIALS = {
 }
 
 AGENT = {
+    'agent_id': os.getenv('SIEMATIC_AGENT_ID', socket.gethostname()),
+    'hostname': socket.gethostname(),
     'plugins': [
         {
             'name': 'watchdog',

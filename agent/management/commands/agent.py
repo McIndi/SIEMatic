@@ -18,6 +18,27 @@ from agent.plugins.plugin_process_manager import PluginProcessManager
 logger = logging.getLogger(__name__)
 logger.debug("agent.management.commands.agent module loaded.")
 
+
+def build_heartbeat(
+    *,
+    agent_id,
+    hostname,
+    children_alive,
+    plugin_managers,
+    timestamp=None,
+):
+    return {
+        'type': 'agent_heartbeat',
+        'agent_id': agent_id,
+        'index': 'agents',
+        'source': 'agent_heartbeat',
+        'host': hostname,
+        'sourcetype': 'json',
+        'timestamp': time.time() if timestamp is None else timestamp,
+        'children_alive': children_alive,
+        'plugin_managers': plugin_managers,
+    }
+
 class GracefulExit(SystemExit):
     """
     Exception for graceful shutdown on SIGINT.
@@ -73,12 +94,18 @@ class Command(BaseCommand):
                 for manager in self.plugin_managers.values():
                     manager.check_and_restart()
                     logger.info("Checked and restarted manager: %s", manager)
-                    heartbeat = {
-                        'type': 'agent_heartbeat',
-                        'timestamp': time.time(),
-                        'children_alive': children_alive,
-                        'plugin_managers': {k: {'alive': m.children_alive(), 'attempts': m.restart_attempts.get(m.plugin_path, 0)} for k, m in self.plugin_managers.items()}
-                    }
+                    heartbeat = build_heartbeat(
+                        agent_id=agent_cfg['agent_id'],
+                        hostname=agent_cfg['hostname'],
+                        children_alive=children_alive,
+                        plugin_managers={
+                            k: {
+                                'alive': m.children_alive(),
+                                'attempts': m.restart_attempts.get(m.plugin_path, 0),
+                            }
+                            for k, m in self.plugin_managers.items()
+                        },
+                    )
                     logger.debug("Heartbeat data: %s", heartbeat)
                     # Send credentials with heartbeat if needed
                     manager.event_queue.put(heartbeat)

@@ -238,6 +238,24 @@ def _persist_typed_batch(agent_pk, payload):
     }
 
 
+def _touch_heartbeat_agents(payload, user_id):
+    from agent.models import Agent
+
+    items = payload if isinstance(payload, list) else [payload]
+    agent_ids = {
+        item.get('agent_id')
+        for item in items
+        if isinstance(item, dict)
+        and item.get('type') == 'agent_heartbeat'
+        and isinstance(item.get('agent_id'), str)
+    }
+    if agent_ids:
+        Agent.objects.filter(
+            user_id=user_id,
+            agent_id__in=agent_ids,
+        ).update(last_seen=timezone.now())
+
+
 class EventConsumer(AsyncWebsocketConsumer):
     """
     WebSocket consumer for event ingestion.
@@ -306,6 +324,10 @@ class EventConsumer(AsyncWebsocketConsumer):
 
         if not isinstance(payload, dict) or 'type' not in payload:
             await create_events(data=payload)
+            await database_sync_to_async(_touch_heartbeat_agents)(
+                payload,
+                self.scope['user'].pk,
+            )
             return
 
         message_type = payload.get('type')
