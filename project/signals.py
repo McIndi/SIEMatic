@@ -25,6 +25,10 @@ DEFAULT_PERMISSIONS = [
 ]
 AGENT_PERMISSIONS = [
     ("events", "event", "add_event"),
+    ("agent", "agent", "add_agent"),
+    ("agent", "agent", "change_agent"),
+    ("agent", "checkpoint", "add_checkpoint"),
+    ("agent", "checkpoint", "change_checkpoint"),
 ]
 
 
@@ -75,7 +79,7 @@ def configure_groups_after_migrate(sender, app_config, verbosity, **kwargs):
     if app_config.label != "crawlers":
         return
 
-    for target_app in ("events", "dashboarding", "crawlers", "search2"):
+    for target_app in ("events", "dashboarding", "crawlers", "search2", "agent"):
         create_permissions(
             django_apps.get_app_config(target_app),
             verbosity=verbosity,
