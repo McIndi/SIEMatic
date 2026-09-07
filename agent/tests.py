@@ -3,6 +3,8 @@
 import tempfile
 import socket
 import json
+from datetime import timedelta
+from io import StringIO
 from pathlib import Path
 from queue import Queue
 from types import SimpleNamespace
@@ -13,8 +15,11 @@ import psutil
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import IntegrityError, transaction
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
 
 from agent.models import Agent, BatchReceipt, Checkpoint
 from agent.plugins.plugin_process_manager import get_indexer_transport, sender_process
@@ -88,6 +93,69 @@ class CheckpointModelTests(TestCase):
                 ('agent', 'change_checkpoint'),
             },
         )
+
+
+class ReceiptMaintenanceTests(TestCase):
+    def test_prune_batch_receipts_removes_only_expired_rows(self):
+        old = BatchReceipt.objects.create(
+            target='old-target',
+            batch_id='old-batch',
+            content_digest='a' * 64,
+            cursor='old',
+            count=1,
+        )
+        current = BatchReceipt.objects.create(
+            target='current-target',
+            batch_id='current-batch',
+            content_digest='b' * 64,
+            cursor='current',
+            count=1,
+        )
+        BatchReceipt.objects.filter(pk=old.pk).update(
+            created=timezone.now() - timedelta(days=31)
+        )
+
+        output = StringIO()
+        call_command('prune_batch_receipts', days=30, stdout=output)
+
+        self.assertEqual(list(BatchReceipt.objects.values_list('pk', flat=True)), [current.pk])
+        self.assertIn('Deleted 1', output.getvalue())
+
+
+class ShipperSecurityCommandTests(TestCase):
+    def test_check_shipper_users_fails_when_agent_can_also_read_events(self):
+        user = get_user_model().objects.create_user(username='unsafe-shipper')
+        user.groups.add(Group.objects.get(name='Agent'))
+        user.groups.add(Group.objects.get(name='Registered User'))
+
+        with self.assertRaisesRegex(CommandError, 'unsafe-shipper'):
+            call_command('check_shipper_users')
+
+    def test_check_shipper_users_accepts_write_only_agent(self):
+        user = get_user_model().objects.create_user(username='safe-shipper')
+        user.groups.add(Group.objects.get(name='Agent'))
+        user.groups.remove(Group.objects.get(name='Registered User'))
+
+        call_command('check_shipper_users', stdout=StringIO())
+
+
+class HeartbeatPayloadTests(SimpleTestCase):
+    def test_heartbeat_has_agent_identity_and_routing_metadata(self):
+        from agent.management.commands.agent import build_heartbeat
+
+        heartbeat = build_heartbeat(
+            agent_id='shipper-a',
+            hostname='node-a',
+            children_alive={'plugin-a': True},
+            plugin_managers={'plugin-a': {'alive': True, 'attempts': 0}},
+            timestamp=123.0,
+        )
+
+        self.assertEqual(heartbeat['agent_id'], 'shipper-a')
+        self.assertEqual(heartbeat['index'], 'agents')
+        self.assertEqual(heartbeat['source'], 'agent_heartbeat')
+        self.assertEqual(heartbeat['host'], 'node-a')
+        self.assertEqual(heartbeat['sourcetype'], 'json')
 
 
 class IndexerTransportTests(SimpleTestCase):

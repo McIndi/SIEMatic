@@ -5,6 +5,7 @@ This module contains unit tests for indexer models, consumers, and routing.
 """
 import json
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 import sys
 
@@ -14,6 +15,7 @@ from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, Permission
 from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
+from django.utils import timezone
 from unittest.mock import patch
 
 from agent.models import Agent, BatchReceipt, Checkpoint
@@ -386,6 +388,35 @@ class CheckpointProtocolTests(TransactionTestCase):
         self.assertEqual(Event.objects.count(), 2)
         self.assertEqual(BatchReceipt.objects.count(), 2)
         self.assertEqual(Checkpoint.objects.get().events_delivered, 2)
+
+    def test_legacy_heartbeat_refreshes_only_its_bound_agent(self):
+        old_seen = timezone.now() - timedelta(minutes=10)
+
+        async def exercise():
+            communicator = await self._connect()
+            await communicator.send_json_to(self.resume)
+            await communicator.receive_json_from()
+            await database_sync_to_async(Agent.objects.filter(
+                agent_id='shipper-keycloak'
+            ).update)(last_seen=old_seen)
+            await communicator.send_json_to([{
+                'type': 'agent_heartbeat',
+                'agent_id': 'shipper-keycloak',
+                'index': 'agents',
+                'source': 'agent_heartbeat',
+                'host': 'keycloak-0',
+                'sourcetype': 'json',
+            }])
+            self.assertTrue(await communicator.receive_nothing(timeout=0.05))
+            seen = await database_sync_to_async(
+                lambda: Agent.objects.get(agent_id='shipper-keycloak').last_seen
+            )()
+            await communicator.disconnect()
+            return seen
+
+        seen = async_to_sync(exercise)()
+        self.assertGreater(seen, old_seen)
+        self.assertEqual(Event.objects.get().host, 'keycloak-0')
 
     @override_settings(INDEXER_MAX_MESSAGE_BYTES=128)
     def test_oversized_message_is_closed(self):
