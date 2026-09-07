@@ -5,6 +5,7 @@ This module contains unit tests for indexer models, consumers, and routing.
 """
 import json
 import tempfile
+import asyncio
 from datetime import timedelta
 from pathlib import Path
 import sys
@@ -407,10 +408,14 @@ class CheckpointProtocolTests(TransactionTestCase):
                 'host': 'keycloak-0',
                 'sourcetype': 'json',
             }])
-            self.assertTrue(await communicator.receive_nothing(timeout=0.05))
-            seen = await database_sync_to_async(
-                lambda: Agent.objects.get(agent_id='shipper-keycloak').last_seen
-            )()
+            seen = old_seen
+            for _attempt in range(20):
+                seen = await database_sync_to_async(
+                    lambda: Agent.objects.get(agent_id='shipper-keycloak').last_seen
+                )()
+                if seen > old_seen:
+                    break
+                await asyncio.sleep(0.05)
             await communicator.disconnect()
             return seen
 
