@@ -22,7 +22,12 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from agent.models import Agent, BatchReceipt, Checkpoint
-from agent.plugins.base import CheckpointedPlugin, build_batch, collection_status
+from agent.plugins.base import (
+    CheckpointedPlugin,
+    build_batch,
+    collection_status,
+    fetch_checkpoints,
+)
 from agent.plugins.plugin_process_manager import get_indexer_transport, sender_process
 from agent.plugins.host_security_posture_plugin import HostSecurityPosturePlugin
 from agent.plugins.network_security_plugin import NetworkSecurityPlugin
@@ -470,6 +475,35 @@ class CheckpointedPluginTests(SimpleTestCase):
         self.assertFalse(thread.is_alive())
         self.assertIs(queue.get_nowait(), batch)
 
+    def test_sender_death_timeout_requeues_the_identical_batch(self):
+        batch = build_batch(
+            agent=self.plugin.agent,
+            target='keycloak:realm-a',
+            cursor='cursor-1',
+            events=[{'id': 'event-1'}],
+            record_identities=['event-1'],
+        )
+        result = []
+        thread = Thread(
+            target=lambda: result.append(self.plugin.deliver_batch(batch, timeout=0.05))
+        )
+
+        thread.start()
+        dequeued_by_dead_sender = self.event_queue.get(timeout=1)
+        replayed_for_new_sender = self.event_queue.get(timeout=1)
+        self.assertIs(dequeued_by_dead_sender, batch)
+        self.assertIs(replayed_for_new_sender, batch)
+        self.ack_queue.put({
+            'target': batch['_target'],
+            'batch_id': batch['batch_id'],
+            'status': 'ack',
+            'cursor': batch['cursor'],
+        })
+        thread.join(timeout=1)
+
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(result[0]['status'], 'ack')
+
     def test_collection_status_rejects_unknown_state(self):
         with self.assertRaisesRegex(ValueError, 'state'):
             collection_status('unknown', source='keycloak')
@@ -477,6 +511,44 @@ class CheckpointedPluginTests(SimpleTestCase):
         status = collection_status('partial', source='keycloak', error='one realm failed')
         self.assertEqual(status['collection_state'], 'partial')
         self.assertEqual(status['collection_error'], 'one realm failed')
+
+    def test_fetch_checkpoints_sends_resume_and_returns_server_cursors(self):
+        sent = []
+
+        class Socket:
+            async def send(self, payload):
+                sent.append(json.loads(payload))
+
+            async def recv(self):
+                return json.dumps({
+                    'type': 'resume_result',
+                    'checkpoints': {'keycloak:realm-a': 'cursor-1'},
+                })
+
+        class Connection:
+            async def __aenter__(self):
+                return Socket()
+
+            async def __aexit__(self, *_exc):
+                return False
+
+        with patch(
+            'agent.plugins.plugin_process_manager.authenticate',
+            return_value='session',
+        ), patch(
+            'websockets.connect',
+            return_value=Connection(),
+        ):
+            checkpoints = fetch_checkpoints(
+                {'tls': False},
+                {'username': 'a', 'password': 'b'},
+                ['keycloak:realm-a'],
+                self.plugin.agent,
+            )
+
+        self.assertEqual(checkpoints, {'keycloak:realm-a': 'cursor-1'})
+        self.assertEqual(sent[0]['type'], 'resume')
+        self.assertEqual(sent[0]['agent'], self.plugin.agent)
 
 
 class WatchdogPluginTests(SimpleTestCase):

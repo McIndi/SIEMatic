@@ -40,7 +40,7 @@ def get_indexer_transport(indexer_cfg):
     }
 
 
-def run_plugin(plugin_path, config, event_queue, stop_event):
+def run_plugin(plugin_path, config, event_queue, ack_queue, stop_event):
     """
     Run a plugin given its path and config, managing its lifecycle.
     """
@@ -50,7 +50,12 @@ def run_plugin(plugin_path, config, event_queue, stop_event):
         logger.debug("Importing module %s, class %s", module_path, class_name)
         module = importlib.import_module(module_path)
         plugin_cls = getattr(module, class_name)
-        plugin = plugin_cls(config, event_queue, stop_event)  # pass stop_event
+        from agent.plugins.base import CheckpointedPlugin
+
+        if issubclass(plugin_cls, CheckpointedPlugin):
+            plugin = plugin_cls(config, event_queue, ack_queue, stop_event)
+        else:
+            plugin = plugin_cls(config, event_queue, stop_event)
         logger.info("Instantiated plugin %s with config %s", plugin_cls, config)
         if hasattr(plugin, 'run'):
             logger.info("Running plugin %s", plugin_cls)
@@ -152,7 +157,25 @@ async def authenticate(indexer_cfg, credentials, max_retries=5):
     return None
 
 
-def sender_process(event_queue, indexer_cfg, credentials=None):
+def _is_complete_batch(item):
+    return isinstance(item, dict) and all(
+        field in item
+        for field in ('_target', '_agent', 'agent_id', 'batch_id', 'cursor', 'events')
+    )
+
+
+def _batch_envelope(batch):
+    return {
+        'type': 'batch',
+        'agent_id': batch['agent_id'],
+        'target': batch['_target'],
+        'batch_id': batch['batch_id'],
+        'cursor': batch['cursor'],
+        'events': batch['events'],
+    }
+
+
+def sender_process(event_queue, indexer_cfg, credentials=None, ack_queue=None):
     """
     Send events to the indexer via WebSocket.
     """
@@ -168,7 +191,7 @@ def sender_process(event_queue, indexer_cfg, credentials=None):
         # Clearing it inside the connection loop loses every event in flight
         # whenever the indexer restarts. Bounded by the drain limit below,
         # because nothing is drained while a batch is still owed.
-        pending = []
+        pending = None
 
         while True:
             sessionid = await authenticate(indexer_cfg, credentials)
@@ -184,27 +207,79 @@ def sender_process(event_queue, indexer_cfg, credentials=None):
             try:
                 async with websockets.connect(uri, **connect_options) as websocket:
                     logger.info(f"WebSocket connection established to {uri}")
+                    resumed_agent_id = None
                     while True:
-                        if not pending:
-                            # Drain queue with soft limits
-                            deadline = time.time() + 0.5
-                            while len(pending) < 500 and time.time() < deadline:
-                                try:
-                                    pending.append(event_queue.get_nowait())
-                                except Exception:
-                                    break
-                            # Normalize type
-                            for ev in pending:
-                                if 'type' not in ev:
-                                    ev['type'] = 'event'
-                        if not pending:
+                        if pending is None:
+                            try:
+                                first = event_queue.get_nowait()
+                            except Exception:
+                                first = None
+                            if _is_complete_batch(first):
+                                pending = first
+                            elif first is not None:
+                                pending = [first]
+                                deadline = time.time() + 0.5
+                                while len(pending) < 500 and time.time() < deadline:
+                                    try:
+                                        pending.append(event_queue.get_nowait())
+                                    except Exception:
+                                        break
+                                for event in pending:
+                                    if 'type' not in event:
+                                        event['type'] = 'event'
+                        if pending is None:
                             await asyncio.sleep(0.1)
                             continue
-                        await websocket.send(json.dumps(pending))
-                        pending = []
+                        if _is_complete_batch(pending):
+                            if ack_queue is None:
+                                raise ValueError('A checkpointed batch requires an ack queue')
+                            agent = pending['_agent']
+                            if resumed_agent_id != agent['agent_id']:
+                                await websocket.send(json.dumps({
+                                    'type': 'resume',
+                                    'agent': agent,
+                                    'targets': [pending['_target']],
+                                }))
+                                resume = json.loads(await asyncio.wait_for(
+                                    websocket.recv(),
+                                    timeout=indexer_cfg.get('ack_timeout', 30),
+                                ))
+                                if resume.get('type') != 'resume_result':
+                                    raise ConnectionError(
+                                        f'Unexpected resume response: {resume!r}'
+                                    )
+                                resumed_agent_id = agent['agent_id']
+
+                            await websocket.send(json.dumps(_batch_envelope(pending)))
+                            response = json.loads(await asyncio.wait_for(
+                                websocket.recv(),
+                                timeout=indexer_cfg.get('ack_timeout', 30),
+                            ))
+                            if (
+                                response.get('type') not in {'ack', 'nack'}
+                                or response.get('target') != pending['_target']
+                                or response.get('batch_id') != pending['batch_id']
+                            ):
+                                raise ConnectionError(
+                                    f'Unexpected batch response: {response!r}'
+                                )
+                            response['status'] = response.pop('type')
+                            ack_queue.put(response)
+                            pending = None
+                        else:
+                            await websocket.send(json.dumps(pending))
+                            pending = None
             except Exception as e:
                 logger.exception(f"Exception in sender_process WebSocket loop: {e}")
-                if pending:
+                if _is_complete_batch(pending):
+                    if ack_queue is not None:
+                        ack_queue.put({
+                            'target': pending['_target'],
+                            'batch_id': pending['batch_id'],
+                            'status': 'retry',
+                        })
+                    pending = None
+                elif pending:
                     logger.warning(
                         "Holding %d event(s) for the next connection", len(pending)
                     )
@@ -229,7 +304,9 @@ class PluginProcessManager:
         self.restart_limit = config.get('restart', 3)
         self.child_processes = []
         self.restart_attempts = {}  # key by plugin_path
-        self.event_queue = multiprocessing.Queue()
+        queue_size = int(config.get('queue_size', 100))
+        self.event_queue = multiprocessing.Queue(maxsize=queue_size)
+        self.ack_queue = multiprocessing.Queue(maxsize=queue_size)
         self.sender_proc = None
         self.stop_event = multiprocessing.Event()  # add stop_event
         logger.debug(f"PluginProcessManager initialized for {plugin_path} with config {config}")
@@ -239,7 +316,16 @@ class PluginProcessManager:
         Start the plugin process and the sender process.
         """
         logger.info(f"Starting plugin process for {self.plugin_path}")
-        proc = multiprocessing.Process(target=run_plugin, args=(self.plugin_path, self.config, self.event_queue, self.stop_event))
+        proc = multiprocessing.Process(
+            target=run_plugin,
+            args=(
+                self.plugin_path,
+                self.config,
+                self.event_queue,
+                self.ack_queue,
+                self.stop_event,
+            ),
+        )
         proc.start()
         logger.info(f"Started plugin process with PID {proc.pid}")
         self.child_processes.append(proc)
@@ -247,7 +333,15 @@ class PluginProcessManager:
         # Start sender process
         if not self.sender_proc or not self.sender_proc.is_alive():
             logger.info("Starting sender process")
-            self.sender_proc = multiprocessing.Process(target=sender_process, args=(self.event_queue, self.indexer_cfg, self.credentials))
+            self.sender_proc = multiprocessing.Process(
+                target=sender_process,
+                args=(
+                    self.event_queue,
+                    self.indexer_cfg,
+                    self.credentials,
+                    self.ack_queue,
+                ),
+            )
             self.sender_proc.start()
             logger.info(f"Started sender process with PID {self.sender_proc.pid}")
 
@@ -260,7 +354,16 @@ class PluginProcessManager:
                 attempts = self.restart_attempts.get(self.plugin_path, 0)  # get attempts by plugin_path
                 logger.warning(f"Plugin process PID {proc.pid} is not alive. Restart attempts: {attempts}")
                 if attempts < self.restart_limit:
-                    new_proc = multiprocessing.Process(target=run_plugin, args=(self.plugin_path, self.config, self.event_queue, self.stop_event))
+                    new_proc = multiprocessing.Process(
+                        target=run_plugin,
+                        args=(
+                            self.plugin_path,
+                            self.config,
+                            self.event_queue,
+                            self.ack_queue,
+                            self.stop_event,
+                        ),
+                    )
                     new_proc.start()
                     logger.info(f"Restarted plugin process with new PID {new_proc.pid}")
                     self.child_processes.append(new_proc)
@@ -271,7 +374,15 @@ class PluginProcessManager:
         # Restart sender if needed
         if self.sender_proc and not self.sender_proc.is_alive():
             logger.warning(f"Sender process PID {self.sender_proc.pid} is not alive. Attempting restart.")
-            self.sender_proc = multiprocessing.Process(target=sender_process, args=(self.event_queue, self.indexer_cfg, self.credentials))
+            self.sender_proc = multiprocessing.Process(
+                target=sender_process,
+                args=(
+                    self.event_queue,
+                    self.indexer_cfg,
+                    self.credentials,
+                    self.ack_queue,
+                ),
+            )
             self.sender_proc.start()
             logger.info(f"Restarted sender process with PID {self.sender_proc.pid}")
 

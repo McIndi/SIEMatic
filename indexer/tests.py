@@ -429,3 +429,45 @@ class CheckpointProtocolTests(TransactionTestCase):
         response = async_to_sync(exercise)()
         self.assertEqual(response['type'], 'websocket.close')
         self.assertEqual(Event.objects.count(), 0)
+
+    def test_loss_gate_reconnects_after_dropped_ack_without_duplicate_or_regression(self):
+        class DropFirstAckConsumer(EventConsumer):
+            dropped = False
+
+            async def _send_json(self, payload):
+                if payload.get('type') == 'ack' and not self.dropped:
+                    self.dropped = True
+                    return
+                await super()._send_json(payload)
+
+        async def exercise():
+            first = WebsocketCommunicator(DropFirstAckConsumer.as_asgi(), '/indexer/')
+            first.scope['user'] = self.user
+            first.scope['client'] = ('192.0.2.10', 4321)
+            connected, _ = await first.connect()
+            self.assertTrue(connected)
+            await first.send_json_to(self.resume)
+            await first.receive_json_from()
+            await first.send_json_to(self.batch)
+            self.assertTrue(await first.receive_nothing(timeout=0.05))
+            await first.disconnect()
+
+            restarted_sender = await self._connect()
+            await restarted_sender.send_json_to(self.resume)
+            resumed = await restarted_sender.receive_json_from()
+            await restarted_sender.send_json_to(self.batch)
+            replay_ack = await restarted_sender.receive_json_from()
+            await restarted_sender.disconnect()
+            return resumed, replay_ack
+
+        resumed, replay_ack = async_to_sync(exercise)()
+        self.assertEqual(
+            resumed['checkpoints']['keycloak:realm-a'],
+            self.batch['cursor'],
+        )
+        self.assertEqual(replay_ack['type'], 'ack')
+        self.assertEqual(Event.objects.count(), 1)
+        self.assertEqual(BatchReceipt.objects.count(), 1)
+        checkpoint = Checkpoint.objects.get(target='keycloak:realm-a')
+        self.assertEqual(checkpoint.cursor, self.batch['cursor'])
+        self.assertEqual(checkpoint.events_delivered, 1)

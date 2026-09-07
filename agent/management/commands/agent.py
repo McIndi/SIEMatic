@@ -76,6 +76,11 @@ class Command(BaseCommand):
             plugin_name = plugin.get('name')
             logger.debug("Processing plugin: %s with config: %s", plugin_name, plugin)
             if plugin.get('enabled', False):
+                plugin = {
+                    **plugin,
+                    'agent_id': agent_cfg['agent_id'],
+                    'hostname': agent_cfg['hostname'],
+                }
                 # Construct class name from plugin name: e.g., 'windows_event_log' -> 'WindowsEventLogPlugin'
                 class_name = ''.join(word.capitalize() for word in plugin_name.split('_')) + 'Plugin'
                 module_name = f'agent.plugins.{plugin_name}_plugin'
