@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 
 from asgiref.sync import async_to_sync
+from channels.db import database_sync_to_async
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, Permission
@@ -34,6 +35,14 @@ class DaphneCommandTests(SimpleTestCase):
         self.assertIn('-b', command)
         self.assertIn('-p', command)
         self.assertNotIn('-e', command)
+        self.assertEqual(
+            command[command.index('--websocket-max-message-size') + 1],
+            '1048576',
+        )
+        self.assertEqual(
+            command[command.index('--websocket-max-frame-size') + 1],
+            '1048576',
+        )
 
     def test_tls_endpoint_uses_certificate_and_key(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -256,13 +265,21 @@ class CheckpointProtocolTests(TransactionTestCase):
             with patch('indexer.consumers._bulk_create_events', side_effect=RuntimeError('db down')):
                 await communicator.send_json_to(self.batch)
                 failed = await communicator.receive_json_from()
+                rolled_back = await database_sync_to_async(
+                    lambda: (
+                        Event.objects.count(),
+                        BatchReceipt.objects.count(),
+                        Checkpoint.objects.count(),
+                    )
+                )()
             await communicator.send_json_to(self.batch)
             retried = await communicator.receive_json_from()
             await communicator.disconnect()
-            return failed, retried
+            return failed, rolled_back, retried
 
-        failed, retried = async_to_sync(exercise)()
+        failed, rolled_back, retried = async_to_sync(exercise)()
         self.assertEqual(failed['type'], 'nack')
+        self.assertEqual(rolled_back, (0, 0, 0))
         self.assertEqual(retried['type'], 'ack')
         self.assertEqual(retried['count'], 1)
         self.assertEqual(Event.objects.count(), 1)
@@ -307,6 +324,50 @@ class CheckpointProtocolTests(TransactionTestCase):
         self.assertEqual(response['type'], 'nack')
         self.assertEqual(response['error'], 'batch_id_reused')
         self.assertEqual(Event.objects.count(), 1)
+
+    def test_reused_batch_id_with_changed_content_is_rejected(self):
+        changed = dict(self.batch)
+        changed['events'] = [dict(self.batch['events'][0], event_id='event-2')]
+
+        async def exercise():
+            communicator = await self._connect()
+            await communicator.send_json_to(self.resume)
+            await communicator.receive_json_from()
+            await communicator.send_json_to(self.batch)
+            await communicator.receive_json_from()
+            await communicator.send_json_to(changed)
+            response = await communicator.receive_json_from()
+            await communicator.disconnect()
+            return response
+
+        response = async_to_sync(exercise)()
+        self.assertEqual(response['error'], 'batch_id_reused')
+        self.assertEqual(Event.objects.count(), 1)
+
+    def test_mixed_routing_and_nondefault_database_are_rejected(self):
+        mixed = dict(self.batch)
+        mixed['events'] = [
+            self.batch['events'][0],
+            dict(self.batch['events'][0], source='realm-b'),
+        ]
+        alternate_db = dict(self.batch, batch_id='batch-2')
+        alternate_db['events'] = [dict(self.batch['events'][0], db_alias='other')]
+
+        async def exercise():
+            communicator = await self._connect()
+            await communicator.send_json_to(self.resume)
+            await communicator.receive_json_from()
+            await communicator.send_json_to(mixed)
+            mixed_response = await communicator.receive_json_from()
+            await communicator.send_json_to(alternate_db)
+            db_response = await communicator.receive_json_from()
+            await communicator.disconnect()
+            return mixed_response, db_response
+
+        mixed_response, db_response = async_to_sync(exercise)()
+        self.assertEqual(mixed_response['error'], 'mixed_routing')
+        self.assertEqual(db_response['error'], 'invalid_db_alias')
+        self.assertEqual(Event.objects.count(), 0)
 
     def test_different_batch_ids_with_same_content_both_land(self):
         async def exercise():

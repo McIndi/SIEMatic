@@ -45,6 +45,11 @@ def env_list(name, default):
     return [item.strip() for item in value.split(',') if item.strip()]
 
 
+def env_int(name, default):
+    value = os.getenv(name)
+    return default if value is None else int(value)
+
+
 # File logging suits a workstation or a Compose stack. Under Kubernetes the
 # container often runs as an arbitrary UID with no writable working directory,
 # and the collector reads stdout anyway, so the directory creation below has to
@@ -74,6 +79,12 @@ ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', ['localhost', '127.0.0.1', '::1
 INTERNAL_IPS = [
     '127.0.0.1',
 ]
+
+INDEXER_MAX_MESSAGE_BYTES = env_int('INDEXER_MAX_MESSAGE_BYTES', 1_048_576)
+INDEXER_MAX_FRAME_BYTES = env_int('INDEXER_MAX_FRAME_BYTES', 1_048_576)
+INDEXER_MAX_BATCH_EVENTS = env_int('INDEXER_MAX_BATCH_EVENTS', 500)
+INDEXER_MAX_CURSOR_LENGTH = env_int('INDEXER_MAX_CURSOR_LENGTH', 16_384)
+INDEXER_MAX_RESUME_TARGETS = env_int('INDEXER_MAX_RESUME_TARGETS', 100)
 
 
 # Application definition

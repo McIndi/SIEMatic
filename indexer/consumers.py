@@ -5,11 +5,32 @@ This module handles WebSocket connections for event ingestion and indexing.
 """
 
 import json
+import hashlib
+from collections import defaultdict
+
+from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
-from asgiref.sync import sync_to_async
+from django.conf import settings
+from django.db import transaction
+from django.db.models import F
+from django.utils import timezone
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class ProtocolError(ValueError):
+    """A stable protocol error that is safe to return to a shipper."""
+
+
+def canonical_digest(events):
+    encoded = json.dumps(
+        events,
+        ensure_ascii=False,
+        separators=(',', ':'),
+        sort_keys=True,
+    ).encode('utf-8')
+    return hashlib.sha256(encoded).hexdigest()
 
 
 async def create_events(data):
@@ -35,7 +56,7 @@ async def create_events(data):
     # If parsed_data is a list, process each item
     if isinstance(parsed_data, list):
         built_events = [_build_event(event_data) for event_data in parsed_data]
-        return await sync_to_async(_bulk_create_events)(built_events)
+        return await database_sync_to_async(_bulk_create_events)(built_events)
     else:
         # Single event
         return [await _create_single_event(parsed_data)]
@@ -79,7 +100,6 @@ def _build_event(event_data):
 
 def _bulk_create_events(built_events):
     """Persist a batch with one bulk insert per requested database alias."""
-    from collections import defaultdict
     from events.extractors import apply_extractions
     from events.models import Event
 
@@ -100,9 +120,122 @@ async def _create_single_event(event_data):
     Create a single event from event_data dict.
     """
     event, db_alias = _build_event(event_data)
-    await sync_to_async(event.save)(using=db_alias)
+    await database_sync_to_async(event.save)(using=db_alias)
     logger.debug("Created event in database %s", db_alias)
     return event
+
+
+def _resume_agent(user_id, agent_data, address, targets):
+    from agent.models import Agent, Checkpoint
+
+    agent_id = agent_data['agent_id']
+    now = timezone.now()
+    with transaction.atomic():
+        agent = Agent.objects.select_for_update().filter(agent_id=agent_id).first()
+        if agent is not None and agent.user_id not in (None, user_id):
+            raise ProtocolError('agent_id_owned_by_another_user')
+        if agent is None:
+            agent = Agent(agent_id=agent_id, user_id=user_id)
+        elif agent.user_id is None:
+            agent.user_id = user_id
+        agent.hostname = agent_data.get('hostname', '')
+        agent.address = address
+        agent.version = agent_data.get('version', '')
+        agent.last_seen = now
+        agent.save()
+
+        stored = dict(
+            Checkpoint.objects.filter(target__in=targets).values_list('target', 'cursor')
+        )
+    return agent.pk, {target: stored.get(target) for target in targets}
+
+
+def _validate_and_build_typed_events(events):
+    if not events:
+        raise ProtocolError('empty_batch')
+
+    built_events = []
+    routing = set()
+    for event_data in events:
+        if not isinstance(event_data, dict):
+            raise ProtocolError('invalid_event')
+        event, db_alias = _build_event(event_data)
+        if db_alias != 'default':
+            raise ProtocolError('invalid_db_alias')
+        routing.add((event.index, event.source))
+        built_events.append((event, db_alias))
+
+    if len(routing) != 1:
+        raise ProtocolError('mixed_routing')
+    index, source = routing.pop()
+    return built_events, index, source
+
+
+def _persist_typed_batch(agent_pk, payload):
+    from agent.models import Agent, BatchReceipt, Checkpoint
+
+    target = payload['target']
+    batch_id = payload['batch_id']
+    cursor = payload['cursor']
+    events = payload['events']
+    digest = canonical_digest(events)
+    built_events, index, source = _validate_and_build_typed_events(events)
+    now = timezone.now()
+
+    with transaction.atomic(using='default'):
+        receipt, created = BatchReceipt.objects.get_or_create(
+            target=target,
+            batch_id=batch_id,
+            defaults={
+                'cursor': cursor,
+                'count': len(events),
+                'content_digest': digest,
+            },
+        )
+        if not created:
+            if receipt.content_digest != digest or receipt.cursor != cursor:
+                raise ProtocolError('batch_id_reused')
+            Agent.objects.filter(pk=agent_pk).update(last_seen=now)
+            return {
+                'type': 'ack',
+                'target': receipt.target,
+                'batch_id': receipt.batch_id,
+                'cursor': receipt.cursor,
+                'count': receipt.count,
+            }
+
+        _bulk_create_events(built_events)
+        if Agent.objects.filter(pk=agent_pk).update(
+            events_delivered=F('events_delivered') + len(events),
+            last_event_at=now,
+            last_seen=now,
+        ) != 1:
+            raise ProtocolError('unknown_agent')
+        Checkpoint.objects.update_or_create(
+            target=target,
+            create_defaults={
+                'cursor': cursor,
+                'agent_id': agent_pk,
+                'index': index,
+                'source': source,
+                'events_delivered': len(events),
+            },
+            defaults={
+                'cursor': cursor,
+                'agent_id': agent_pk,
+                'index': index,
+                'source': source,
+                'events_delivered': F('events_delivered') + len(events),
+            },
+        )
+
+    return {
+        'type': 'ack',
+        'target': target,
+        'batch_id': batch_id,
+        'cursor': cursor,
+        'count': len(events),
+    }
 
 
 class EventConsumer(AsyncWebsocketConsumer):
@@ -120,8 +253,15 @@ class EventConsumer(AsyncWebsocketConsumer):
         """
         logger.info("WebSocket connection requested.")
         user = self.scope.get("user")
-        if user and user.is_authenticated:
+        authorized = bool(
+            user
+            and user.is_authenticated
+            and await database_sync_to_async(user.has_perm)('events.add_event')
+        )
+        if authorized:
             logger.info("WebSocket connection accepted for user: %s", user.username)
+            self.agent_id = None
+            self.agent_pk = None
             await self.accept()
         else:
             logger.warning("WebSocket connection rejected for user: %s", getattr(user, 'username', 'Anonymous'))
@@ -147,6 +287,107 @@ class EventConsumer(AsyncWebsocketConsumer):
             bytes_data: The bytes data received (ignored).
         """
         logger.debug("WebSocket received len(text_data): %s, len(bytes_data): %s", len(text_data or ''), len(bytes_data or b''))
-        if text_data:
+        if bytes_data is not None:
+            await self.close(code=1003)
+            return
+        if not text_data:
+            return
+
+        max_message_bytes = getattr(settings, 'INDEXER_MAX_MESSAGE_BYTES', 1_048_576)
+        if len(text_data.encode('utf-8')) > max_message_bytes:
+            await self.close(code=1009)
+            return
+
+        try:
+            payload = json.loads(text_data)
+        except json.JSONDecodeError:
             await create_events(data=text_data)
+            return
+
+        if not isinstance(payload, dict) or 'type' not in payload:
+            await create_events(data=payload)
+            return
+
+        message_type = payload.get('type')
+        try:
+            if message_type == 'resume':
+                await self._handle_resume(payload)
+            elif message_type == 'batch':
+                await self._handle_batch(payload)
+            else:
+                raise ProtocolError('unknown_message_type')
+        except ProtocolError as exc:
+            await self._send_nack(payload, str(exc))
+        except Exception:
+            logger.exception('Typed ingest failed')
+            await self._send_nack(payload, 'write_failed')
+
+    async def _handle_resume(self, payload):
+        if self.agent_id is not None:
+            raise ProtocolError('resume_already_received')
+        agent_data = payload.get('agent')
+        targets = payload.get('targets')
+        if not isinstance(agent_data, dict) or not isinstance(targets, list):
+            raise ProtocolError('invalid_resume')
+        agent_id = agent_data.get('agent_id')
+        if not isinstance(agent_id, str) or not agent_id or len(agent_id) > 255:
+            raise ProtocolError('invalid_agent_id')
+        max_targets = getattr(settings, 'INDEXER_MAX_RESUME_TARGETS', 100)
+        if len(targets) > max_targets or any(
+            not isinstance(target, str) or not target or len(target) > 512
+            for target in targets
+        ):
+            raise ProtocolError('invalid_targets')
+
+        client = self.scope.get('client') or (None, None)
+        address = client[0]
+        agent_pk, checkpoints = await database_sync_to_async(_resume_agent)(
+            self.scope['user'].pk,
+            agent_data,
+            address,
+            targets,
+        )
+        self.agent_id = agent_id
+        self.agent_pk = agent_pk
+        await self._send_json({
+            'type': 'resume_result',
+            'checkpoints': checkpoints,
+        })
+
+    async def _handle_batch(self, payload):
+        if self.agent_id is None:
+            raise ProtocolError('resume_required')
+        if payload.get('agent_id') != self.agent_id:
+            raise ProtocolError('agent_id_mismatch')
+
+        target = payload.get('target')
+        batch_id = payload.get('batch_id')
+        cursor = payload.get('cursor')
+        events = payload.get('events')
+        max_events = getattr(settings, 'INDEXER_MAX_BATCH_EVENTS', 500)
+        max_cursor = getattr(settings, 'INDEXER_MAX_CURSOR_LENGTH', 16_384)
+        if not isinstance(target, str) or not target or len(target) > 512:
+            raise ProtocolError('invalid_target')
+        if not isinstance(batch_id, str) or not batch_id or len(batch_id) > 255:
+            raise ProtocolError('invalid_batch_id')
+        if not isinstance(cursor, str) or len(cursor) > max_cursor:
+            raise ProtocolError('invalid_cursor')
+        if not isinstance(events, list) or len(events) > max_events:
+            raise ProtocolError('invalid_events')
+
+        response = await database_sync_to_async(_persist_typed_batch)(
+            self.agent_pk,
+            payload,
+        )
+        await self._send_json(response)
+
+    async def _send_nack(self, payload, error):
+        response = {'type': 'nack', 'error': error}
+        for field in ('target', 'batch_id'):
+            if isinstance(payload.get(field), str):
+                response[field] = payload[field]
+        await self._send_json(response)
+
+    async def _send_json(self, payload):
+        await self.send(text_data=json.dumps(payload, separators=(',', ':')))
 

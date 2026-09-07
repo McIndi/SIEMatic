@@ -16,7 +16,15 @@ from twisted.internet.endpoints import quoteStringArgument
 logger = logging.getLogger(__name__)
 
 
-def build_daphne_command(python, host, port, ssl_cert=None, ssl_key=None):
+def build_daphne_command(
+    python,
+    host,
+    port,
+    ssl_cert=None,
+    ssl_key=None,
+    max_message_size=1_048_576,
+    max_frame_size=1_048_576,
+):
     """Build a Daphne command with either a TCP or verified TLS endpoint."""
     if bool(ssl_cert) != bool(ssl_key):
         raise ValueError(
@@ -40,7 +48,15 @@ def build_daphne_command(python, host, port, ssl_cert=None, ssl_key=None):
     else:
         command.extend(['-b', host, '-p', str(port)])
 
-    command.extend(['-v', '3', 'SIEMatic.asgi:application'])
+    command.extend([
+        '--websocket-max-message-size',
+        str(max_message_size),
+        '--websocket-max-frame-size',
+        str(max_frame_size),
+        '-v',
+        '3',
+        'SIEMatic.asgi:application',
+    ])
     return command
 
 
@@ -87,7 +103,13 @@ class Command(BaseCommand):
         ssl_key = indexer_config.get('ssl_key')
         try:
             daphne_cmd = build_daphne_command(
-                sys.executable, host, port, ssl_cert, ssl_key
+                sys.executable,
+                host,
+                port,
+                ssl_cert,
+                ssl_key,
+                settings.INDEXER_MAX_MESSAGE_BYTES,
+                settings.INDEXER_MAX_FRAME_BYTES,
             )
         except ValueError as exc:
             raise CommandError(str(exc)) from exc
