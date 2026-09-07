@@ -282,6 +282,7 @@ class CheckpointProtocolTests(TransactionTestCase):
 
         failed, rolled_back, retried = async_to_sync(exercise)()
         self.assertEqual(failed['type'], 'nack')
+        self.assertIs(failed['retryable'], True)
         self.assertEqual(rolled_back, (0, 0, 0))
         self.assertEqual(retried['type'], 'ack')
         self.assertEqual(retried['count'], 1)
@@ -326,6 +327,7 @@ class CheckpointProtocolTests(TransactionTestCase):
         response = async_to_sync(exercise)()
         self.assertEqual(response['type'], 'nack')
         self.assertEqual(response['error'], 'batch_id_reused')
+        self.assertIs(response['retryable'], False)
         self.assertEqual(Event.objects.count(), 1)
 
     def test_reused_batch_id_with_changed_content_is_rejected(self):

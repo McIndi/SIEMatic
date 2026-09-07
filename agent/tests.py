@@ -24,6 +24,7 @@ from django.utils import timezone
 from agent.models import Agent, BatchReceipt, Checkpoint
 from agent.plugins.base import (
     CheckpointedPlugin,
+    PermanentDeliveryError,
     build_batch,
     collection_status,
     fetch_checkpoints,
@@ -448,6 +449,7 @@ class CheckpointedPluginTests(SimpleTestCase):
             'target': batch['_target'],
             'batch_id': batch['batch_id'],
             'status': 'nack',
+            'retryable': True,
         })
         self.ack_queue.put({
             'target': batch['_target'],
@@ -456,7 +458,8 @@ class CheckpointedPluginTests(SimpleTestCase):
             'cursor': batch['cursor'],
         })
 
-        acknowledgement = self.plugin.deliver_batch(batch, timeout=0.1)
+        with patch.object(self.plugin.stop_event, 'wait', return_value=False) as wait:
+            acknowledgement = self.plugin.deliver_batch(batch, timeout=0.1)
 
         self.assertIs(self.event_queue.get_nowait(), batch)
         self.assertIs(self.event_queue.get_nowait(), batch)
@@ -465,6 +468,61 @@ class CheckpointedPluginTests(SimpleTestCase):
             self.plugin.acknowledged_positions['keycloak:realm-a'],
             'cursor-1',
         )
+        wait.assert_called_once_with(1.0)
+
+    def test_permanent_nack_emits_error_and_stops_target_without_retrying(self):
+        batch = build_batch(
+            agent=self.plugin.agent,
+            target='keycloak:realm-a',
+            cursor='cursor-1',
+            events=[{'id': 'event-1'}],
+            record_identities=['event-1'],
+        )
+        self.ack_queue.put({
+            'target': batch['_target'],
+            'batch_id': batch['batch_id'],
+            'status': 'nack',
+            'error': 'batch_id_reused',
+            'retryable': False,
+        })
+
+        with self.assertRaisesRegex(PermanentDeliveryError, 'batch_id_reused'):
+            self.plugin.deliver_batch(batch, timeout=0.1)
+
+        self.assertIs(self.event_queue.get_nowait(), batch)
+        status = self.event_queue.get_nowait()
+        self.assertEqual(status['collection_state'], 'error')
+        self.assertEqual(status['delivery_target'], 'keycloak:realm-a')
+        self.assertTrue(self.event_queue.empty())
+        self.assertEqual(
+            self.plugin.failed_targets['keycloak:realm-a'],
+            'batch_id_reused',
+        )
+
+    def test_late_ack_for_completed_batch_is_not_retained(self):
+        batch = build_batch(
+            agent=self.plugin.agent,
+            target='keycloak:realm-a',
+            cursor='cursor-1',
+            events=[{'id': 'event-1'}],
+            record_identities=['event-1'],
+        )
+        self.ack_queue.put({
+            'target': batch['_target'],
+            'batch_id': batch['batch_id'],
+            'status': 'ack',
+        })
+        self.plugin.deliver_batch(batch, timeout=0.1)
+        self.ack_queue.put({
+            'target': batch['_target'],
+            'batch_id': batch['batch_id'],
+            'status': 'ack',
+        })
+
+        self.assertIsNone(
+            self.plugin._next_acknowledgement('other-target', 'other-batch', 0.01)
+        )
+        self.assertEqual(self.plugin._ack_backlog, {})
 
     def test_queue_backpressure_blocks_instead_of_growing(self):
         queue = Queue(maxsize=1)
