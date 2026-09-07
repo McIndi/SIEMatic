@@ -14,7 +14,7 @@ from unittest.mock import Mock, patch
 import psutil
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
+from django.contrib.auth.models import Group, Permission
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import IntegrityError, transaction
@@ -143,6 +143,18 @@ class ShipperSecurityCommandTests(TestCase):
         user.groups.remove(Group.objects.get(name='Registered User'))
 
         call_command('check_shipper_users', stdout=StringIO())
+
+    def test_check_shipper_users_catches_direct_event_read_permission(self):
+        user = get_user_model().objects.create_user(username='direct-reader')
+        user.groups.add(Group.objects.get(name='Agent'))
+        user.groups.remove(Group.objects.get(name='Registered User'))
+        user.user_permissions.add(Permission.objects.get(
+            content_type__app_label='events',
+            codename='view_event',
+        ))
+
+        with self.assertRaisesRegex(CommandError, 'direct-reader'):
+            call_command('check_shipper_users')
 
 
 class HeartbeatPayloadTests(SimpleTestCase):
