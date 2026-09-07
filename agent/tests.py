@@ -8,7 +8,7 @@ from io import StringIO
 from pathlib import Path
 from queue import Queue
 from types import SimpleNamespace
-from threading import Event
+from threading import Event, Thread
 from unittest.mock import Mock, patch
 
 import psutil
@@ -22,6 +22,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from agent.models import Agent, BatchReceipt, Checkpoint
+from agent.plugins.base import CheckpointedPlugin, build_batch, collection_status
 from agent.plugins.plugin_process_manager import get_indexer_transport, sender_process
 from agent.plugins.host_security_posture_plugin import HostSecurityPosturePlugin
 from agent.plugins.network_security_plugin import NetworkSecurityPlugin
@@ -311,6 +312,171 @@ class SenderProcessTests(SimpleTestCase):
             sender_process(queue, {'tls': False}, {'username': 'a', 'password': 'b'})
 
         self.assertEqual(login.call_count, 5)
+
+    def test_complete_batch_is_forwarded_as_typed_envelope_and_acknowledged(self):
+        batch = {
+            '_target': 'keycloak:realm-a',
+            '_agent': {
+                'agent_id': 'shipper-keycloak',
+                'hostname': 'keycloak-0',
+                'version': '1.0',
+            },
+            'agent_id': 'shipper-keycloak',
+            'batch_id': 'batch-1',
+            'cursor': 'cursor-1',
+            'events': [{'index': 'keycloak', 'source': 'realm-a', 'value': 1}],
+        }
+        event_queue = Queue()
+        event_queue.put(batch)
+        ack_queue = Queue()
+        sent = []
+        responses = [
+            {'type': 'resume_result', 'checkpoints': {'keycloak:realm-a': None}},
+            {
+                'type': 'ack',
+                'target': 'keycloak:realm-a',
+                'batch_id': 'batch-1',
+                'cursor': 'cursor-1',
+                'count': 1,
+            },
+        ]
+
+        class Socket(_FakeWebSocket):
+            async def recv(self):
+                return json.dumps(responses.pop(0))
+
+        class Connection:
+            async def __aenter__(self):
+                return Socket([None, None], sent)
+
+            async def __aexit__(self, *_exc):
+                return False
+
+        with patch(
+            'agent.plugins.plugin_process_manager.get_session_cookie',
+            return_value='session',
+        ), patch(
+            'agent.plugins.plugin_process_manager.websockets.connect',
+            return_value=Connection(),
+        ), patch(
+            'agent.plugins.plugin_process_manager.asyncio.sleep',
+            _no_sleep(),
+        ):
+            with self.assertRaises(_StopSender):
+                sender_process(
+                    event_queue,
+                    {'tls': False},
+                    {'username': 'a', 'password': 'b'},
+                    ack_queue,
+                )
+
+        resume, envelope = map(json.loads, sent)
+        self.assertEqual(resume['type'], 'resume')
+        self.assertEqual(envelope['type'], 'batch')
+        self.assertEqual(envelope['target'], batch['_target'])
+        self.assertNotIn('_target', envelope)
+        self.assertNotIn('_agent', envelope)
+        self.assertEqual(ack_queue.get_nowait()['status'], 'ack')
+
+
+class ExampleCheckpointedPlugin(CheckpointedPlugin):
+    def collect_once(self, timestamp=None):
+        return []
+
+
+class CheckpointedPluginTests(SimpleTestCase):
+    def setUp(self):
+        self.event_queue = Queue(maxsize=2)
+        self.ack_queue = Queue(maxsize=2)
+        self.plugin = ExampleCheckpointedPlugin(
+            {
+                'agent_id': 'shipper-keycloak',
+                'hostname': 'keycloak-0',
+                'version': '1.0',
+            },
+            self.event_queue,
+            self.ack_queue,
+            Event(),
+        )
+
+    def test_build_batch_is_deterministic_and_owned_by_plugin(self):
+        first = build_batch(
+            agent=self.plugin.agent,
+            target='keycloak:realm-a',
+            cursor='cursor-1',
+            events=[{'id': 'event-1'}],
+            record_identities=['event-1'],
+        )
+        second = build_batch(
+            agent=self.plugin.agent,
+            target='keycloak:realm-a',
+            cursor='cursor-1',
+            events=[{'id': 'event-1'}],
+            record_identities=['event-1'],
+        )
+
+        self.assertEqual(first, second)
+        self.assertEqual(first['_target'], 'keycloak:realm-a')
+        self.assertEqual(first['agent_id'], 'shipper-keycloak')
+
+    def test_nack_requeues_the_identical_retained_batch(self):
+        batch = build_batch(
+            agent=self.plugin.agent,
+            target='keycloak:realm-a',
+            cursor='cursor-1',
+            events=[{'id': 'event-1'}],
+            record_identities=['event-1'],
+        )
+        self.ack_queue.put({
+            'target': batch['_target'],
+            'batch_id': batch['batch_id'],
+            'status': 'nack',
+        })
+        self.ack_queue.put({
+            'target': batch['_target'],
+            'batch_id': batch['batch_id'],
+            'status': 'ack',
+            'cursor': batch['cursor'],
+        })
+
+        acknowledgement = self.plugin.deliver_batch(batch, timeout=0.1)
+
+        self.assertIs(self.event_queue.get_nowait(), batch)
+        self.assertIs(self.event_queue.get_nowait(), batch)
+        self.assertEqual(acknowledgement['status'], 'ack')
+        self.assertEqual(
+            self.plugin.acknowledged_positions['keycloak:realm-a'],
+            'cursor-1',
+        )
+
+    def test_queue_backpressure_blocks_instead_of_growing(self):
+        queue = Queue(maxsize=1)
+        queue.put({'already': 'full'})
+        self.plugin.event_queue = queue
+        batch = build_batch(
+            agent=self.plugin.agent,
+            target='keycloak:realm-a',
+            cursor='cursor-1',
+            events=[{'id': 'event-1'}],
+            record_identities=['event-1'],
+        )
+        thread = Thread(target=self.plugin.enqueue_batch, args=(batch,))
+
+        thread.start()
+        thread.join(timeout=0.05)
+        self.assertTrue(thread.is_alive())
+        queue.get_nowait()
+        thread.join(timeout=1)
+        self.assertFalse(thread.is_alive())
+        self.assertIs(queue.get_nowait(), batch)
+
+    def test_collection_status_rejects_unknown_state(self):
+        with self.assertRaisesRegex(ValueError, 'state'):
+            collection_status('unknown', source='keycloak')
+
+        status = collection_status('partial', source='keycloak', error='one realm failed')
+        self.assertEqual(status['collection_state'], 'partial')
+        self.assertEqual(status['collection_error'], 'one realm failed')
 
 
 class WatchdogPluginTests(SimpleTestCase):
