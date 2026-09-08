@@ -184,6 +184,27 @@ class KeycloakEventsPluginTests(SimpleTestCase):
             {'timestamp': timestamp, 'fingerprints': ['event-a', 'event-b']},
         )
 
+    def test_restart_from_saved_cursor_replays_no_events(self):
+        events = [
+            {'id': 'event-a', 'time': 1000, 'type': 'LOGIN'},
+            {'id': 'event-b', 'time': 1000, 'type': 'LOGOUT'},
+            {'id': 'event-c', 'time': 1001, 'type': 'LOGIN'},
+        ]
+        initial = self.make_plugin(FakeKeycloakClient({0: list(reversed(events))}))
+        initial.acknowledged_positions[initial.target_id] = encode_cursor({
+            'timestamp': 0,
+            'fingerprints': [],
+        })
+
+        batches = initial.collect_once(timestamp=datetime.fromtimestamp(2, timezone.utc))
+
+        restarted = self.make_plugin(FakeKeycloakClient({0: list(reversed(events))}))
+        restarted.acknowledged_positions[restarted.target_id] = batches[-1]['cursor']
+        self.assertEqual(
+            restarted.collect_once(timestamp=datetime.fromtimestamp(2, timezone.utc)),
+            [],
+        )
+
     def test_failed_target_is_not_polled_again(self):
         client = FakeKeycloakClient({
             0: [{'id': 'event-1', 'time': 1000, 'type': 'LOGIN'}],
