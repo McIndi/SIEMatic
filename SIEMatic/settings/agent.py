@@ -9,6 +9,7 @@ import socket
 import platform
 
 from .base import *
+from agent.shipper_config import plugins_for_role
 
 # Agent/Indexer host/port config
 
@@ -139,3 +140,10 @@ if core_only:
             'host_security_posture',
         }
     ]
+
+
+# OpenShift gives each shipper its own Deployment and exactly one plugin. This
+# keeps Keycloak credentials out of the pod that can read cross-namespace logs.
+shipper_role = os.getenv('SIEMATIC_SHIPPER_ROLE')
+if shipper_role:
+    AGENT['plugins'] = plugins_for_role(shipper_role, os.environ)
