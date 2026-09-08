@@ -215,3 +215,30 @@ class KubeLogsPluginTests(SimpleTestCase):
             ],
         )
         self.assertNotEqual(batches[0]['batch_id'], batches[1]['batch_id'])
+
+    def test_one_timestamp_is_not_split_across_cursor_boundaries(self):
+        timestamp = '2026-09-07T12:00:01.000000000Z'
+        client = FakeKubernetesClient(
+            pod(),
+            current=''.join(
+                f'{timestamp} sequence={sequence}\n'
+                for sequence in range(3)
+            ),
+        )
+        plugin = self.make_plugin(client, batch_size=2)
+
+        batches = plugin.collect_once(
+            timestamp=datetime(2026, 9, 7, 12, 0, tzinfo=timezone.utc)
+        )
+
+        self.assertEqual([len(batch['events']) for batch in batches], [3])
+        self.assertEqual(
+            len(decode_cursor(batches[0]['cursor'])['line_hashes']),
+            3,
+        )
+
+        resumed = self.make_plugin(client, batch_size=2)
+        resumed.acknowledged_positions[resumed.target_id(self.target)] = (
+            batches[0]['cursor']
+        )
+        self.assertEqual(resumed.collect_once(), [])
