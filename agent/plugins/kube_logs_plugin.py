@@ -168,6 +168,7 @@ class KubeLogsPlugin(CheckpointedPlugin):
         # indexer's 16 KiB cursor limit when every event shares a timestamp.
         self.batch_size = min(int(config.get('batch_size', 200)), 200)
         self.max_batch_bytes = int(config.get('max_batch_bytes', 900_000))
+        self.max_cursor_length = int(config.get('max_cursor_length', 16_384))
         if self.batch_size < 1 or self.max_batch_bytes < 1:
             raise ValueError('batch bounds must be positive')
         self.client = client or KubernetesApiClient(config.get('kubernetes'))
@@ -337,6 +338,8 @@ class KubeLogsPlugin(CheckpointedPlugin):
                 [(timestamp, line) for timestamp, line, _identity in chunk_records],
                 last_identity,
             )
+            if len(cursor_value) > self.max_cursor_length:
+                raise ValueError('one timestamp boundary exceeds max_cursor_length')
             batches.append(build_batch(
                 agent=self.agent,
                 target=target_id,
@@ -356,11 +359,20 @@ class KubeLogsPlugin(CheckpointedPlugin):
                 event_size = len(json.dumps(event).encode('utf-8'))
                 if event_size > self.max_batch_bytes:
                     raise ValueError('one Kubernetes log event exceeds max_batch_bytes')
-                if chunk_events and (
+                exceeds_preferred_bound = chunk_events and (
                     len(chunk_events) >= self.batch_size
                     or chunk_bytes + event_size > self.max_batch_bytes
-                ):
+                )
+                same_timestamp = bool(
+                    chunk_records and chunk_records[-1][0] == timestamp
+                )
+                if exceeds_preferred_bound and not same_timestamp:
                     finish_chunk()
+                elif same_timestamp and (
+                    len(chunk_events) >= 500
+                    or chunk_bytes + event_size > self.max_batch_bytes
+                ):
+                    raise ValueError('one timestamp boundary exceeds protocol bounds')
 
             chunk_records.append((timestamp, line, stream_identity))
             if event is not None:
