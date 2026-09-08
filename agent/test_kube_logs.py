@@ -201,6 +201,47 @@ class KubeLogsPluginTests(SimpleTestCase):
         self.assertEqual(batches[0]['events'][0]['data'], 'line-created-between-polls')
         self.assertEqual(client.calls[-1][3], '2026-09-07T12:00:00Z')
 
+    def test_quiet_first_poll_keeps_subsecond_lines_before_next_poll(self):
+        client = FakeKubernetesClient(pod(), current='')
+        plugin = self.make_plugin(client)
+        first_poll = datetime(2026, 9, 7, 12, 0, tzinfo=timezone.utc)
+
+        self.assertEqual(plugin.collect_once(timestamp=first_poll), [])
+        client.current = (
+            '2026-09-07T12:00:00.500000000Z line-created-between-polls\n'
+        )
+        batches = plugin.collect_once(
+            timestamp=datetime(2026, 9, 7, 12, 0, 1, tzinfo=timezone.utc)
+        )
+
+        self.assertEqual(batches[0]['events'][0]['data'], 'line-created-between-polls')
+
+    def test_boundary_cursor_retains_prior_hashes_at_same_timestamp(self):
+        timestamp = '2026-09-07T12:00:00.123456789Z'
+        line_a = 'level=info sequence=a'
+        line_b = 'level=info sequence=b'
+        client = FakeKubernetesClient(
+            pod(),
+            current=f'{timestamp} {line_a}\n{timestamp} {line_b}\n',
+        )
+        plugin = self.make_plugin(client)
+        target_id = plugin.target_id(self.target)
+        plugin.acknowledged_positions[target_id] = encode_cursor({
+            'timestamp': timestamp,
+            'line_hashes': [plugin.line_hash(line_a)],
+            'pod_uid': 'pod-uid-1',
+            'container_id': 'containerd://one',
+            'restart_count': 0,
+        })
+
+        batches = plugin.collect_once()
+
+        self.assertEqual([event['data'] for event in batches[0]['events']], [line_b])
+        self.assertEqual(
+            decode_cursor(batches[0]['cursor'])['line_hashes'],
+            [plugin.line_hash(line_a), plugin.line_hash(line_b)],
+        )
+
     def test_invalid_target_requires_exactly_one_selector_kind(self):
         invalid = dict(self.target, selector='app=weather')
 

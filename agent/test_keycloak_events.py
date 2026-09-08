@@ -157,6 +157,16 @@ class KeycloakEventsPluginTests(SimpleTestCase):
             3,
         )
 
+    def test_failed_target_is_not_polled_again(self):
+        client = FakeKeycloakClient({
+            0: [{'id': 'event-1', 'time': 1000, 'type': 'LOGIN'}],
+        })
+        plugin = self.make_plugin(client)
+        plugin.failed_targets[plugin.target_id] = 'batch_id_reused'
+
+        self.assertEqual(plugin.collect_once(), [])
+        self.assertEqual(client.calls, [])
+
 
 class Response:
     def __init__(self, status_code, payload):
