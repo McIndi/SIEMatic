@@ -284,6 +284,30 @@ class CheckpointProtocolTests(TransactionTestCase):
         async_to_sync(exercise)()
         self.assertEqual(Event.objects.count(), 1)
 
+    def test_legacy_tail_batch_does_not_disconnect_or_retry_forever(self):
+        payload = {
+            'src_path': '/var/log/application.log',
+            'event_type': 'line',
+            'line': 'application started\n',
+            'timestamp': 1788883200.0,
+            'index': 'tail',
+            'host': 'node-a',
+            'source': 'tail',
+            'sourcetype': 'text',
+        }
+
+        async def exercise():
+            communicator = await self._connect()
+            await communicator.send_json_to([payload])
+            no_reply = await communicator.receive_nothing(timeout=0.05)
+            await communicator.disconnect()
+            return no_reply
+
+        self.assertTrue(async_to_sync(exercise)())
+        event = Event.objects.get()
+        self.assertEqual(event.index, 'tail')
+        self.assertEqual(json.loads(event.data)['line'], 'application started\n')
+
     def test_batch_must_follow_resume_and_match_bound_agent(self):
         async def exercise():
             communicator = await self._connect()

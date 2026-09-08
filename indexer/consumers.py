@@ -49,7 +49,7 @@ async def create_events(data):
             logger.debug("Parsed data as JSON")
         except Exception as e:
             logger.debug(f"Failed to parse data as JSON: {e}, treating as raw string")
-            parsed_data = data
+            parsed_data = {'data': data}
     else:
         parsed_data = data
 
@@ -72,13 +72,13 @@ def _normalize_event_data(event_data):
                 "Failed to parse batch item as JSON: %s; treating as raw data",
                 exc,
             )
-            return {'sourcetype': 'text', 'data': event_data}
+            return {'data': event_data}
     if not isinstance(event_data, dict):
         return {'data': event_data}
     return event_data.copy()
 
 
-def _build_event(event_data):
+def _build_event(event_data, *, strict_payload=False):
     """Build an unsaved Event and return it with its requested DB alias."""
     from events.models import Event
 
@@ -90,7 +90,11 @@ def _build_event(event_data):
     db_alias = event_data.pop('db_alias', None) or 'default'
     normalized_sourcetype = str(sourcetype).lower()
 
-    if normalized_sourcetype in {'logfmt', 'text'}:
+    if not strict_payload:
+        # Untyped agents predate the explicit data envelope. Preserve their
+        # original serialization exactly, including TailPlugin's metadata.
+        stored_data = json.dumps(event_data)
+    elif normalized_sourcetype in {'logfmt', 'text'}:
         if set(event_data) != {'data'} or not isinstance(event_data['data'], str):
             raise ProtocolError('invalid_raw_payload')
         stored_data = event_data['data']
@@ -174,7 +178,7 @@ def _validate_and_build_typed_events(events):
     for event_data in events:
         if not isinstance(event_data, dict):
             raise ProtocolError('invalid_event')
-        event, db_alias = _build_event(event_data)
+        event, db_alias = _build_event(event_data, strict_payload=True)
         if db_alias != 'default':
             raise ProtocolError('invalid_db_alias')
         routing.add((event.index, event.source))
