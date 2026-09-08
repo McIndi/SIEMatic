@@ -98,9 +98,9 @@ class WebSocketBatchIngestTests(TestCase):
 
         self.assertEqual(len(events), 3)
         self.assertEqual(Event.objects.count(), 3)
-        self.assertEqual(events[1].data, 'not-json')
-        self.assertEqual(events[1].sourcetype, 'text')
-        self.assertEqual(events[1].extracted_fields, {})
+        self.assertEqual(json.loads(events[1].data), {'data': 'not-json'})
+        self.assertEqual(events[1].sourcetype, 'json')
+        self.assertEqual(events[1].extracted_fields, {'data': 'not-json'})
 
     def test_explicit_logfmt_data_is_stored_raw_for_field_extraction(self):
         line = (
@@ -115,7 +115,7 @@ class WebSocketBatchIngestTests(TestCase):
                 'host': 'weather-service-abc',
                 'sourcetype': 'logfmt',
                 'data': line,
-            })
+            }, strict_payload=True)
         ])
 
         self.assertEqual(events[0].data, line)
@@ -126,18 +126,30 @@ class WebSocketBatchIngestTests(TestCase):
             ).exists()
         )
 
-    def test_legacy_untyped_logfmt_uses_the_same_raw_data_contract(self):
-        line = 'level=INFO plugin=ibac status=403 code=ibac.blocked'
+    def test_legacy_tail_payload_keeps_its_previous_json_wrapping(self):
+        payload = {
+            'src_path': '/var/log/application.log',
+            'event_type': 'line',
+            'line': 'application started\n',
+            'timestamp': 1788883200.0,
+            'index': 'tail',
+            'host': 'node-a',
+            'source': 'tail',
+            'sourcetype': 'text',
+        }
 
-        async_to_sync(create_events)([{
-            'index': 'authbridge',
-            'source': 'weather-tool/authbridge-proxy',
-            'sourcetype': 'logfmt',
-            'data': line,
-        }])
+        events = async_to_sync(create_events)([payload])
 
-        self.assertTrue(
-            Event.objects.filter(extracted_fields__code='ibac.blocked').exists()
+        self.assertEqual(events[0].index, 'tail')
+        self.assertEqual(events[0].sourcetype, 'text')
+        self.assertEqual(
+            json.loads(events[0].data),
+            {
+                'src_path': '/var/log/application.log',
+                'event_type': 'line',
+                'line': 'application started\n',
+                'timestamp': 1788883200.0,
+            },
         )
 
     def test_structured_json_data_exposes_vault_audit_fields(self):
@@ -152,7 +164,7 @@ class WebSocketBatchIngestTests(TestCase):
             'source': 'vault/audit',
             'sourcetype': 'json',
             'data': audit_record,
-        })])
+        }, strict_payload=True)])
 
         self.assertEqual(events[0].extracted_fields, audit_record)
         self.assertTrue(
@@ -168,7 +180,7 @@ class WebSocketBatchIngestTests(TestCase):
                 'index': 'authbridge',
                 'sourcetype': 'logfmt',
                 'line': 'code=ibac.blocked',
-            })
+            }, strict_payload=True)
 
 
 class WebSocketAuthenticationTests(TestCase):
