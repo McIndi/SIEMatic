@@ -339,10 +339,10 @@ class EventConsumer(AsyncWebsocketConsumer):
             else:
                 raise ProtocolError('unknown_message_type')
         except ProtocolError as exc:
-            await self._send_nack(payload, str(exc))
+            await self._send_nack(payload, str(exc), retryable=False)
         except Exception:
             logger.exception('Typed ingest failed')
-            await self._send_nack(payload, 'write_failed')
+            await self._send_nack(payload, 'write_failed', retryable=True)
 
     async def _handle_resume(self, payload):
         if self.agent_id is not None:
@@ -403,8 +403,12 @@ class EventConsumer(AsyncWebsocketConsumer):
         )
         await self._send_json(response)
 
-    async def _send_nack(self, payload, error):
-        response = {'type': 'nack', 'error': error}
+    async def _send_nack(self, payload, error, *, retryable):
+        response = {
+            'type': 'nack',
+            'error': error,
+            'retryable': retryable,
+        }
         for field in ('target', 'batch_id'):
             if isinstance(payload.get(field), str):
                 response[field] = payload[field]

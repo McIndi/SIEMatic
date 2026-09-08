@@ -9,6 +9,10 @@ from abc import ABC, abstractmethod
 from threading import Lock
 
 
+class PermanentDeliveryError(RuntimeError):
+    """The server rejected a batch that cannot succeed unchanged."""
+
+
 def _canonical_json(value):
     return json.dumps(
         value,
@@ -104,6 +108,7 @@ class CheckpointedPlugin(ABC):
         }
         self.read_positions = {}
         self.acknowledged_positions = {}
+        self.failed_targets = {}
         self._inflight = {}
         self._inflight_lock = Lock()
         self._ack_backlog = {}
@@ -125,11 +130,16 @@ class CheckpointedPlugin(ABC):
 
     def deliver_batch(self, batch, *, timeout=30):
         target = batch['_target']
+        if target in self.failed_targets:
+            raise PermanentDeliveryError(
+                f'{target}: {self.failed_targets[target]}'
+            )
         with self._inflight_lock:
             if target in self._inflight:
                 raise RuntimeError(f'Batch already in flight for {target}')
             self._inflight[target] = batch
         try:
+            retry_attempt = 0
             while not self.stop_event.is_set():
                 self.enqueue_batch(batch)
                 deadline = time.monotonic() + timeout
@@ -149,11 +159,36 @@ class CheckpointedPlugin(ABC):
                             'cursor', batch['cursor']
                         )
                         return acknowledgement
+                    if (
+                        acknowledgement.get('status') == 'nack'
+                        and not acknowledgement.get('retryable', False)
+                    ):
+                        error = acknowledgement.get('error', 'permanent_nack')
+                        self.failed_targets[target] = error
+                        self.enqueue_batch(collection_status(
+                            'error',
+                            source='shipper_delivery',
+                            host=self.agent.get('hostname') or 'localhost',
+                            error=error,
+                            delivery_target=target,
+                            batch_id=batch['batch_id'],
+                        ))
+                        raise PermanentDeliveryError(f'{target}: {error}')
+                    retry_attempt += 1
+                    backoff = min(
+                        float(self.config.get('retry_backoff', 1.0))
+                        * (2 ** (retry_attempt - 1)),
+                        float(self.config.get('retry_backoff_max', 30.0)),
+                    )
+                    if self.stop_event.wait(backoff):
+                        break
                     break
             raise RuntimeError('Plugin stopped before batch was acknowledged')
         finally:
             with self._inflight_lock:
                 self._inflight.pop(target, None)
+            with self._ack_lock:
+                self._ack_backlog.pop((target, batch['batch_id']), None)
 
     def _next_acknowledgement(self, target, batch_id, timeout):
         wanted = (target, batch_id)
@@ -180,5 +215,9 @@ class CheckpointedPlugin(ABC):
             )
             if received == wanted:
                 return acknowledgement
+            with self._inflight_lock:
+                active = self._inflight.get(received[0])
+                if active is None or active.get('batch_id') != received[1]:
+                    continue
             with self._ack_lock:
                 self._ack_backlog.setdefault(received, []).append(acknowledgement)
