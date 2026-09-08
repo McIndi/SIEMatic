@@ -49,7 +49,7 @@ async def create_events(data):
             logger.debug("Parsed data as JSON")
         except Exception as e:
             logger.debug(f"Failed to parse data as JSON: {e}, treating as raw string")
-            parsed_data = {'data': data}
+            parsed_data = data
     else:
         parsed_data = data
 
@@ -72,7 +72,7 @@ def _normalize_event_data(event_data):
                 "Failed to parse batch item as JSON: %s; treating as raw data",
                 exc,
             )
-            return {'data': event_data}
+            return {'sourcetype': 'text', 'data': event_data}
     if not isinstance(event_data, dict):
         return {'data': event_data}
     return event_data.copy()
@@ -88,12 +88,27 @@ def _build_event(event_data):
     host = event_data.pop('host', 'localhost')
     sourcetype = event_data.pop('sourcetype', 'json')
     db_alias = event_data.pop('db_alias', None) or 'default'
+    normalized_sourcetype = str(sourcetype).lower()
+
+    if normalized_sourcetype in {'logfmt', 'text'}:
+        if set(event_data) != {'data'} or not isinstance(event_data['data'], str):
+            raise ProtocolError('invalid_raw_payload')
+        stored_data = event_data['data']
+    elif normalized_sourcetype == 'json' and 'data' in event_data:
+        if set(event_data) != {'data'}:
+            raise ProtocolError('ambiguous_json_payload')
+        data = event_data['data']
+        stored_data = data if isinstance(data, str) else json.dumps(data)
+    else:
+        # Preserve the original flat JSON event shape for existing agents.
+        stored_data = json.dumps(event_data)
+
     event = Event(
         index=index,
         source=source,
         host=host,
         sourcetype=sourcetype,
-        data=json.dumps(event_data),
+        data=stored_data,
     )
     return event, db_alias
 

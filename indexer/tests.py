@@ -445,6 +445,29 @@ class CheckpointProtocolTests(TransactionTestCase):
         self.assertEqual(db_response['error'], 'invalid_db_alias')
         self.assertEqual(Event.objects.count(), 0)
 
+    def test_missing_raw_data_is_a_permanent_protocol_error(self):
+        invalid = dict(self.batch)
+        invalid['events'] = [{
+            'index': 'authbridge',
+            'source': 'weather-service/authbridge-proxy',
+            'sourcetype': 'logfmt',
+            'line': 'code=ibac.blocked',
+        }]
+
+        async def exercise():
+            communicator = await self._connect()
+            await communicator.send_json_to(self.resume)
+            await communicator.receive_json_from()
+            await communicator.send_json_to(invalid)
+            response = await communicator.receive_json_from()
+            await communicator.disconnect()
+            return response
+
+        response = async_to_sync(exercise)()
+        self.assertEqual(response['error'], 'invalid_raw_payload')
+        self.assertIs(response['retryable'], False)
+        self.assertEqual(Event.objects.count(), 0)
+
     def test_different_batch_ids_with_same_content_both_land(self):
         async def exercise():
             communicator = await self._connect()
