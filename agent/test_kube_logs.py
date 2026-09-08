@@ -185,6 +185,22 @@ class KubeLogsPluginTests(SimpleTestCase):
 
         self.assertEqual(client.calls[-1][3], '2026-09-07T12:00:00Z')
 
+    def test_quiet_first_poll_does_not_skip_lines_before_second_poll(self):
+        client = FakeKubernetesClient(pod(), current='')
+        plugin = self.make_plugin(client)
+        first_poll = datetime(2026, 9, 7, 12, 0, tzinfo=timezone.utc)
+
+        self.assertEqual(plugin.collect_once(timestamp=first_poll), [])
+        client.current = (
+            '2026-09-07T12:00:01.000000000Z line-created-between-polls\n'
+        )
+        batches = plugin.collect_once(
+            timestamp=datetime(2026, 9, 7, 12, 0, 2, tzinfo=timezone.utc)
+        )
+
+        self.assertEqual(batches[0]['events'][0]['data'], 'line-created-between-polls')
+        self.assertEqual(client.calls[-1][3], '2026-09-07T12:00:00Z')
+
     def test_invalid_target_requires_exactly_one_selector_kind(self):
         invalid = dict(self.target, selector='app=weather')
 

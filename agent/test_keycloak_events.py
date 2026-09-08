@@ -95,6 +95,10 @@ class KeycloakEventsPluginTests(SimpleTestCase):
             2: [{'id': 'one', 'time': 1, 'type': 'LOGIN'}],
         })
         plugin = self.make_plugin(client, page_size=2)
+        plugin.acknowledged_positions[plugin.target_id] = encode_cursor({
+            'timestamp': 0,
+            'fingerprints': [],
+        })
 
         batches = plugin.collect_once(
             timestamp=datetime.fromtimestamp(10, timezone.utc)
@@ -116,6 +120,20 @@ class KeycloakEventsPluginTests(SimpleTestCase):
         self.assertEqual(client.calls[0][1], 1788868800123)
         self.assertEqual(client.calls[0][2], 1788868800123)
 
+    def test_quiet_first_poll_does_not_skip_events_before_second_poll(self):
+        client = FakeKeycloakClient({0: []})
+        plugin = self.make_plugin(client)
+        first_poll = datetime.fromtimestamp(1, timezone.utc)
+
+        self.assertEqual(plugin.collect_once(timestamp=first_poll), [])
+        client.pages[0] = [{'id': 'between', 'time': 1500, 'type': 'LOGIN'}]
+        batches = plugin.collect_once(
+            timestamp=datetime.fromtimestamp(2, timezone.utc)
+        )
+
+        self.assertEqual(batches[0]['events'][0]['data']['id'], 'between')
+        self.assertEqual(client.calls[-1][1], 1000)
+
     def test_one_millisecond_boundary_is_not_split_between_batches(self):
         client = FakeKeycloakClient({
             0: [
@@ -124,6 +142,10 @@ class KeycloakEventsPluginTests(SimpleTestCase):
             ],
         })
         plugin = self.make_plugin(client, batch_size=2)
+        plugin.acknowledged_positions[plugin.target_id] = encode_cursor({
+            'timestamp': 0,
+            'fingerprints': [],
+        })
 
         batches = plugin.collect_once(
             timestamp=datetime.fromtimestamp(2, timezone.utc)
