@@ -164,6 +164,12 @@ class KubeLogsPlugin(CheckpointedPlugin):
                 if not target.get(field):
                     raise ValueError(f'target requires {field}')
         self.poll_interval = float(config.get('poll_interval', 5))
+        # At most 200 boundary hashes also keeps the encoded cursor below the
+        # indexer's 16 KiB cursor limit when every event shares a timestamp.
+        self.batch_size = min(int(config.get('batch_size', 200)), 200)
+        self.max_batch_bytes = int(config.get('max_batch_bytes', 900_000))
+        if self.batch_size < 1 or self.max_batch_bytes < 1:
+            raise ValueError('batch bounds must be positive')
         self.client = client or KubernetesApiClient(config.get('kubernetes'))
 
     @staticmethod
@@ -307,13 +313,57 @@ class KubeLogsPlugin(CheckpointedPlugin):
             streams.append((self._parse_lines(current), None, identity))
 
         records = []
-        identities = []
-        events = []
         occurrences = defaultdict(int)
         for stream_records, boundary, stream_identity in streams:
             selected = self._after_boundary(stream_records, boundary)
             for timestamp, line in selected:
-                records.append((timestamp, line))
+                records.append((timestamp, line, stream_identity))
+
+        if not records:
+            return []
+
+        batches = []
+        chunk_records = []
+        chunk_events = []
+        chunk_identities = []
+        chunk_bytes = 0
+
+        def finish_chunk():
+            nonlocal chunk_records, chunk_events, chunk_identities, chunk_bytes
+            if not chunk_events:
+                return
+            last_identity = chunk_records[-1][2]
+            cursor_value = self._cursor(
+                [(timestamp, line) for timestamp, line, _identity in chunk_records],
+                last_identity,
+            )
+            batches.append(build_batch(
+                agent=self.agent,
+                target=target_id,
+                cursor=cursor_value,
+                events=chunk_events,
+                record_identities=chunk_identities,
+            ))
+            chunk_records = []
+            chunk_events = []
+            chunk_identities = []
+            chunk_bytes = 0
+
+        for timestamp, line, stream_identity in records:
+            event = self._event(target, pod_name, line)
+            event_size = 0
+            if event is not None:
+                event_size = len(json.dumps(event).encode('utf-8'))
+                if event_size > self.max_batch_bytes:
+                    raise ValueError('one Kubernetes log event exceeds max_batch_bytes')
+                if chunk_events and (
+                    len(chunk_events) >= self.batch_size
+                    or chunk_bytes + event_size > self.max_batch_bytes
+                ):
+                    finish_chunk()
+
+            chunk_records.append((timestamp, line, stream_identity))
+            if event is not None:
                 digest = self.line_hash(line)
                 identity_key = (
                     stream_identity['pod_uid'],
@@ -324,31 +374,27 @@ class KubeLogsPlugin(CheckpointedPlugin):
                 )
                 occurrence = occurrences[identity_key]
                 occurrences[identity_key] += 1
-                event = self._event(target, pod_name, line)
-                if event is not None:
-                    events.append(event)
-                    identities.append([*identity_key, occurrence])
+                chunk_events.append(event)
+                chunk_identities.append([*identity_key, occurrence])
+                chunk_bytes += event_size
 
-        if not records:
-            return None
-        next_cursor = self._cursor(records, identity)
-        self.read_positions[target_id] = next_cursor
-        if not events:
-            return None
-        return build_batch(
-            agent=self.agent,
-            target=target_id,
-            cursor=next_cursor,
-            events=events,
-            record_identities=identities,
-        )
+        finish_chunk()
+        if batches:
+            self.read_positions[target_id] = batches[-1]['cursor']
+        else:
+            last_identity = records[-1][2]
+            self.read_positions[target_id] = self._cursor(
+                [(timestamp, line) for timestamp, line, _identity in records],
+                last_identity,
+            )
+        return batches
 
     def collect_once(self, timestamp=None):
         started = timestamp or datetime.now(timezone.utc)
         batches = []
         for target in self.targets:
             try:
-                batch = self._collect_target(target, started)
+                target_batches = self._collect_target(target, started)
             except Exception as exc:
                 logger.exception('Failed to collect Kubernetes logs for %s', target)
                 self.enqueue_batch(collection_status(
@@ -359,8 +405,7 @@ class KubeLogsPlugin(CheckpointedPlugin):
                     collection_target=self.target_id(target),
                 ))
                 continue
-            if batch is not None:
-                batches.append(batch)
+            batches.extend(target_batches)
         return batches
 
     def run(self):
