@@ -200,6 +200,35 @@ class HeartbeatPayloadTests(SimpleTestCase):
 
 
 class IndexerTransportTests(SimpleTestCase):
+    def test_kube_shipper_is_limited_to_the_three_audit_targets(self):
+        from agent.shipper_config import plugins_for_role
+
+        plugins = plugins_for_role('kube_logs', {})
+
+        self.assertEqual(len(plugins), 1)
+        self.assertEqual(plugins[0]['name'], 'kube_logs')
+        self.assertEqual(
+            [target['namespace'] for target in plugins[0]['targets']],
+            ['team1', 'team1', 'vault'],
+        )
+        self.assertTrue(plugins[0]['targets'][-1]['vault_audit'])
+
+    def test_keycloak_shipper_requires_dedicated_client_credentials(self):
+        from agent.shipper_config import plugins_for_role
+
+        with self.assertRaisesRegex(ValueError, 'KEYCLOAK_CLIENT_SECRET'):
+            plugins_for_role('keycloak_events', {
+                'KEYCLOAK_BASE_URL': 'https://keycloak.example.test',
+                'KEYCLOAK_CLIENT_ID': 'siematic-events',
+            })
+
+        plugin = plugins_for_role('keycloak_events', {
+            'KEYCLOAK_BASE_URL': 'https://keycloak.example.test',
+            'KEYCLOAK_CLIENT_ID': 'siematic-events',
+            'KEYCLOAK_CLIENT_SECRET': 'secret',
+        })[0]
+        self.assertEqual(plugin['keycloak']['token_realm'], 'master')
+
     def test_plugin_config_log_summary_never_contains_secret_values(self):
         summary = config_log_summary({
             'name': 'kube_logs',
