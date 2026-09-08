@@ -52,7 +52,7 @@ class KubeLogsPluginTests(SimpleTestCase):
         'sourcetype': 'logfmt',
     }
 
-    def make_plugin(self, client, targets=None):
+    def make_plugin(self, client, targets=None, **config):
         return KubeLogsPlugin(
             {
                 'agent_id': 'shipper-kube-logs',
@@ -60,6 +60,7 @@ class KubeLogsPluginTests(SimpleTestCase):
                 'version': '1.0',
                 'targets': targets or [self.target],
                 'poll_interval': 5,
+                **config,
             },
             Queue(maxsize=10),
             Queue(maxsize=10),
@@ -189,3 +190,28 @@ class KubeLogsPluginTests(SimpleTestCase):
 
         with self.assertRaisesRegex(ValueError, 'deployment.*selector'):
             self.make_plugin(FakeKubernetesClient(pod()), [invalid])
+
+    def test_large_poll_is_split_into_protocol_bounded_sequential_batches(self):
+        client = FakeKubernetesClient(
+            pod(),
+            current=(
+                '2026-09-07T12:00:01.000000000Z sequence=1\n'
+                '2026-09-07T12:00:02.000000000Z sequence=2\n'
+                '2026-09-07T12:00:03.000000000Z sequence=3\n'
+            ),
+        )
+        plugin = self.make_plugin(client, batch_size=2)
+
+        batches = plugin.collect_once(
+            timestamp=datetime(2026, 9, 7, 12, 0, tzinfo=timezone.utc)
+        )
+
+        self.assertEqual([len(batch['events']) for batch in batches], [2, 1])
+        self.assertEqual(
+            [decode_cursor(batch['cursor'])['timestamp'] for batch in batches],
+            [
+                '2026-09-07T12:00:02.000000000Z',
+                '2026-09-07T12:00:03.000000000Z',
+            ],
+        )
+        self.assertNotEqual(batches[0]['batch_id'], batches[1]['batch_id'])
