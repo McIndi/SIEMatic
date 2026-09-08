@@ -168,27 +168,28 @@ class KeycloakEventsPlugin(CheckpointedPlugin):
         raise RuntimeError('Keycloak event pagination exceeded max_pages')
 
     @staticmethod
-    def _cursor(events):
+    def _cursor(events, boundary=None):
         timestamp = max(event['time'] for event in events)
-        return encode_cursor({
-            'timestamp': timestamp,
-            'fingerprints': [
-                event_fingerprint(event)
-                for event in events
-                if event['time'] == timestamp
-            ],
-        })
+        fingerprints = [
+            event_fingerprint(event)
+            for event in events
+            if event['time'] == timestamp
+        ]
+        if boundary and boundary['timestamp'] == timestamp:
+            fingerprints = list(boundary['fingerprints']) + fingerprints
+        return encode_cursor({'timestamp': timestamp, 'fingerprints': fingerprints})
 
-    def _build_batches(self, events):
+    def _build_batches(self, events, boundary=None):
         batches = []
         chunk = []
         chunk_bytes = 0
+        chunk_boundary = boundary
 
         def finish_chunk():
-            nonlocal chunk, chunk_bytes
+            nonlocal chunk, chunk_bytes, chunk_boundary
             if not chunk:
                 return
-            cursor = self._cursor(chunk)
+            cursor = self._cursor(chunk, chunk_boundary)
             if len(cursor) > self.max_cursor_length:
                 raise ValueError('one Keycloak timestamp exceeds max_cursor_length')
             routed = [
@@ -208,6 +209,7 @@ class KeycloakEventsPlugin(CheckpointedPlugin):
                 events=routed,
                 record_identities=[event_fingerprint(event) for event in chunk],
             ))
+            chunk_boundary = decode_cursor(cursor)
             chunk = []
             chunk_bytes = 0
 
@@ -266,7 +268,7 @@ class KeycloakEventsPlugin(CheckpointedPlugin):
                     continue
                 events.append(event)
             events.sort(key=lambda event: (event['time'], event_fingerprint(event)))
-            batches = self._build_batches(events)
+            batches = self._build_batches(events, cursor)
         except Exception as exc:
             logger.exception('Failed to collect Keycloak events for %s', self.realm)
             self.enqueue_batch(collection_status(

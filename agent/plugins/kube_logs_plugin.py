@@ -334,16 +334,18 @@ class KubeLogsPlugin(CheckpointedPlugin):
         chunk_events = []
         chunk_identities = []
         chunk_bytes = 0
+        chunk_boundary = cursor
 
         def finish_chunk():
             nonlocal chunk_records, chunk_events, chunk_identities, chunk_bytes
+            nonlocal chunk_boundary
             if not chunk_events:
                 return
             last_identity = chunk_records[-1][2]
             cursor_value = self._cursor(
                 [(timestamp, line) for timestamp, line, _identity in chunk_records],
                 last_identity,
-                cursor if cursor and cursor['timestamp'] == chunk_records[-1][0] else None,
+                chunk_boundary,
             )
             if len(cursor_value) > self.max_cursor_length:
                 raise ValueError('one timestamp boundary exceeds max_cursor_length')
@@ -354,6 +356,7 @@ class KubeLogsPlugin(CheckpointedPlugin):
                 events=chunk_events,
                 record_identities=chunk_identities,
             ))
+            chunk_boundary = decode_cursor(cursor_value)
             chunk_records = []
             chunk_events = []
             chunk_identities = []
@@ -405,6 +408,7 @@ class KubeLogsPlugin(CheckpointedPlugin):
             self.read_positions[target_id] = self._cursor(
                 [(timestamp, line) for timestamp, line, _identity in records],
                 last_identity,
+                cursor,
             )
         return batches
 
