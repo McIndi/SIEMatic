@@ -233,6 +233,8 @@ class KeycloakEventsPlugin(CheckpointedPlugin):
         return batches
 
     def collect_once(self, timestamp=None):
+        if self.target_id in self.failed_targets:
+            return []
         started = timestamp or datetime.now(timezone.utc)
         started_ms = int(started.timestamp() * 1000)
         cursor_string = self.read_positions.get(

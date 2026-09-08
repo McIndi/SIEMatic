@@ -47,9 +47,7 @@ def decode_cursor(cursor):
 
 def _rfc3339(value):
     value = value.astimezone(timezone.utc)
-    if value.microsecond:
-        return value.isoformat(timespec='microseconds').replace('+00:00', 'Z')
-    return value.isoformat(timespec='seconds').replace('+00:00', 'Z')
+    return value.isoformat(timespec='microseconds').replace('+00:00', '000Z')
 
 
 class KubernetesApiClient:
@@ -248,13 +246,15 @@ class KubeLogsPlugin(CheckpointedPlugin):
             return {**routing, 'data': record}
         return {**routing, 'data': line}
 
-    def _cursor(self, records, identity):
+    def _cursor(self, records, identity, boundary=None):
         latest = max(timestamp for timestamp, _line in records)
         hashes = [
             self.line_hash(line)
             for timestamp, line in records
             if timestamp == latest
         ]
+        if boundary and boundary['timestamp'] == latest:
+            hashes = list(boundary['line_hashes']) + hashes
         return encode_cursor({
             'timestamp': latest,
             'line_hashes': hashes,
@@ -343,6 +343,7 @@ class KubeLogsPlugin(CheckpointedPlugin):
             cursor_value = self._cursor(
                 [(timestamp, line) for timestamp, line, _identity in chunk_records],
                 last_identity,
+                cursor if cursor and cursor['timestamp'] == chunk_records[-1][0] else None,
             )
             if len(cursor_value) > self.max_cursor_length:
                 raise ValueError('one timestamp boundary exceeds max_cursor_length')
