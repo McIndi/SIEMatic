@@ -321,6 +321,12 @@ class KubeLogsPlugin(CheckpointedPlugin):
                 records.append((timestamp, line, stream_identity))
 
         if not records:
+            if cursor is None:
+                self.read_positions[target_id] = encode_cursor({
+                    'timestamp': _rfc3339(started),
+                    'line_hashes': [],
+                    **identity,
+                })
             return []
 
         batches = []
