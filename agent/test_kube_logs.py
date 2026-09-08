@@ -103,7 +103,7 @@ class KubeLogsPluginTests(SimpleTestCase):
         batches = plugin.collect_once()
 
         self.assertEqual(len(batches), 1)
-        self.assertEqual([event['message'] for event in batches[0]['events']], [line, 'level=info code=next'])
+        self.assertEqual([event['data'] for event in batches[0]['events']], [line, 'level=info code=next'])
         cursor = decode_cursor(batches[0]['cursor'])
         self.assertEqual(cursor['timestamp'], '2026-09-07T12:00:01.000000000Z')
         self.assertEqual(len(cursor['line_hashes']), 1)
@@ -129,7 +129,7 @@ class KubeLogsPluginTests(SimpleTestCase):
         batches = plugin.collect_once()
 
         self.assertEqual(
-            [event['message'] for event in batches[0]['events']],
+            [event['data'] for event in batches[0]['events']],
             ['old-container-line', 'new-container-line'],
         )
         self.assertIn(
