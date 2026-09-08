@@ -13,7 +13,7 @@ import signal
 import logging
 
 from django.conf import settings
-from agent.plugins.plugin_process_manager import PluginProcessManager
+from agent.plugins.plugin_process_manager import PluginProcessManager, config_log_summary
 
 logger = logging.getLogger(__name__)
 logger.debug("agent.management.commands.agent module loaded.")
@@ -85,7 +85,11 @@ class Command(BaseCommand):
         plugins = agent_cfg.get('plugins', [])
         for plugin in plugins:
             plugin_name = plugin.get('name')
-            logger.debug("Processing plugin: %s with config: %s", plugin_name, plugin)
+            logger.debug(
+                "Processing plugin: %s with config_keys=%s",
+                plugin_name,
+                config_log_summary(plugin),
+            )
             if plugin.get('enabled', False):
                 plugin = build_plugin_config(plugin, agent_cfg, settings.INDEXER)
                 # Construct class name from plugin name: e.g., 'windows_event_log' -> 'WindowsEventLogPlugin'

@@ -17,6 +17,11 @@ import requests
 from pathlib import Path
 
 
+def config_log_summary(config):
+    """Describe configuration shape without exposing credential values."""
+    return ','.join(sorted(str(key) for key in config))
+
+
 def get_indexer_transport(indexer_cfg):
     """Return HTTP/WS schemes plus verification settings for the indexer."""
     tls_enabled = bool(indexer_cfg.get('tls', False))
@@ -44,7 +49,11 @@ def run_plugin(plugin_path, config, event_queue, ack_queue, stop_event):
     """
     Run a plugin given its path and config, managing its lifecycle.
     """
-    logger.info("run_plugin called with path=%s, config=%s", plugin_path, config)
+    logger.info(
+        "run_plugin called with path=%s, config_keys=%s",
+        plugin_path,
+        config_log_summary(config),
+    )
     try:
         module_path, class_name = plugin_path.split(':')
         logger.debug("Importing module %s, class %s", module_path, class_name)
@@ -56,7 +65,7 @@ def run_plugin(plugin_path, config, event_queue, ack_queue, stop_event):
             plugin = plugin_cls(config, event_queue, ack_queue, stop_event)
         else:
             plugin = plugin_cls(config, event_queue, stop_event)
-        logger.info("Instantiated plugin %s with config %s", plugin_cls, config)
+        logger.info("Instantiated plugin %s", plugin_cls)
         if hasattr(plugin, 'run'):
             logger.info("Running plugin %s", plugin_cls)
             plugin.run()
@@ -316,7 +325,11 @@ class PluginProcessManager:
         self.ack_queue = multiprocessing.Queue(maxsize=queue_size)
         self.sender_proc = None
         self.stop_event = multiprocessing.Event()  # add stop_event
-        logger.debug(f"PluginProcessManager initialized for {plugin_path} with config {config}")
+        logger.debug(
+            "PluginProcessManager initialized for %s with config_keys=%s",
+            plugin_path,
+            config_log_summary(config),
+        )
 
     def start(self):
         """
