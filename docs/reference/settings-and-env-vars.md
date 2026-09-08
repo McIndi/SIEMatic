@@ -54,11 +54,13 @@ accept `1`, `true`, `yes`, or `on` (case-insensitive); other values are false.
 | `OIDC_RP_SIGN_ALGO` | `RS256` | Algorithm the provider signs tokens with. |
 | `OIDC_STAFF_ROLES` | empty | Comma-separated roles granting Django admin access. Empty means no role does. |
 | `OIDC_SUPERUSER_ROLES` | empty | Comma-separated roles granting superuser. Empty means no role does. |
+| `SIEMATIC_AGENT_ID` | machine hostname | Stable identity this agent reports to the indexer. Set it explicitly wherever the hostname changes on restart, such as a Kubernetes pod, or every restart registers a new agent. |
 | `SIEMATIC_AGENT_SYSMON_ONLY` | `False` | Deprecated alias for `SIEMATIC_AGENT_CORE_ONLY`. |
 | `SIEMATIC_AGENT_CORE_ONLY` | `False` | Uses the cross-platform Sysmon, network-security, and host-security-posture plugins instead of platform defaults. |
 | `SIEMATIC_ANON_THROTTLE_RATE` | `20/hour` | DRF anonymous request throttle rate. |
 | `SIEMATIC_INGEST_THROTTLE_RATE` | `20000/hour` | DRF event-ingestion throttle rate. |
 | `SIEMATIC_SEARCH_THROTTLE_RATE` | `120/min` | DRF search throttle rate. |
+| `SIEMATIC_SHIPPER_ROLE` | empty | Replaces the default plugin list with the single plugin for one shipper role, either `kube_logs` or `keycloak_events`. Empty keeps the normal plugin set. Each role runs in its own Deployment so one shipper's credentials are not readable from the other's pod. |
 | `SIEMATIC_TLS_ENABLED` | `False` | Enables HTTPS-oriented cookie, redirect, and HSTS settings. |
 
 ## Python settings
