@@ -396,6 +396,64 @@ class SenderProcessTests(SimpleTestCase):
         self.assertNotIn('_agent', envelope)
         self.assertEqual(ack_queue.get_nowait()['status'], 'ack')
 
+    def test_permanent_resume_nack_is_forwarded_instead_of_reconnected_forever(self):
+        batch = {
+            '_target': 'keycloak:realm-a',
+            '_agent': {
+                'agent_id': 'shipper-keycloak',
+                'hostname': 'keycloak-0',
+                'version': '1.0',
+            },
+            'agent_id': 'shipper-keycloak',
+            'batch_id': 'batch-1',
+            'cursor': 'cursor-1',
+            'events': [{'index': 'keycloak', 'source': 'realm-a', 'value': 1}],
+        }
+        event_queue = Queue()
+        event_queue.put(batch)
+        ack_queue = Queue()
+        sent = []
+
+        class Socket(_FakeWebSocket):
+            async def recv(self):
+                return json.dumps({
+                    'type': 'nack',
+                    'error': 'agent_id_owned_by_another_user',
+                    'retryable': False,
+                })
+
+        class Connection:
+            async def __aenter__(self):
+                return Socket([None], sent)
+
+            async def __aexit__(self, *_exc):
+                return False
+
+        with patch(
+            'agent.plugins.plugin_process_manager.get_session_cookie',
+            return_value='session',
+        ), patch(
+            'agent.plugins.plugin_process_manager.websockets.connect',
+            return_value=Connection(),
+        ), patch(
+            'agent.plugins.plugin_process_manager.asyncio.sleep',
+            _no_sleep(),
+        ):
+            with self.assertRaises(_StopSender):
+                sender_process(
+                    event_queue,
+                    {'tls': False},
+                    {'username': 'a', 'password': 'b'},
+                    ack_queue,
+                )
+
+        self.assertEqual(len(sent), 1)
+        failure = ack_queue.get_nowait()
+        self.assertEqual(failure['status'], 'nack')
+        self.assertIs(failure['retryable'], False)
+        self.assertEqual(failure['target'], batch['_target'])
+        self.assertEqual(failure['batch_id'], batch['batch_id'])
+
 
 class ExampleCheckpointedPlugin(CheckpointedPlugin):
     def collect_once(self, timestamp=None):
