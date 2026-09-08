@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 from queue import Queue
 from threading import Event
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
@@ -244,6 +245,62 @@ class KubeLogsPluginTests(SimpleTestCase):
         self.assertEqual(
             decode_cursor(batches[0]['cursor'])['line_hashes'],
             [plugin.line_hash(line_a), plugin.line_hash(line_b)],
+        )
+
+    def test_chunk_cursor_chains_from_previous_chunk_boundary(self):
+        lines = [
+            ('2026-09-07T12:00:00.123456789Z', 'level=info sequence=a'),
+            ('2026-09-07T12:00:01.123456789Z', 'level=info sequence=b'),
+            ('2026-09-07T12:00:02.123456789Z', 'level=info sequence=c'),
+        ]
+        client = FakeKubernetesClient(
+            pod(),
+            current=''.join(f'{timestamp} {line}\n' for timestamp, line in lines),
+        )
+        plugin = self.make_plugin(client, batch_size=1)
+
+        with patch.object(plugin, '_cursor', wraps=plugin._cursor) as make_cursor:
+            batches = plugin.collect_once()
+
+        self.assertEqual([len(batch['events']) for batch in batches], [1, 1, 1])
+        self.assertEqual(
+            make_cursor.call_args_list[1].args[2],
+            decode_cursor(batches[0]['cursor']),
+        )
+
+    def test_filtered_poll_retains_boundary_hashes_without_batches(self):
+        timestamp = '2026-09-07T12:00:00.123456789Z'
+        audit_line = 'vault-audit: {"type":"request"}'
+        server_line = 'server message'
+        vault_target = {
+            'namespace': 'vault',
+            'selector': 'app.kubernetes.io/name=vault',
+            'container': 'vault',
+            'index': 'vault',
+            'source': 'vault/audit',
+            'sourcetype': 'json',
+            'vault_audit': True,
+            'prefix': 'vault-audit: ',
+        }
+        client = FakeKubernetesClient(
+            pod(container='vault'),
+            current=f'{timestamp} {audit_line}\n{timestamp} {server_line}\n',
+        )
+        plugin = self.make_plugin(client, [vault_target])
+        target_id = plugin.target_id(vault_target)
+        plugin.acknowledged_positions[target_id] = encode_cursor({
+            'timestamp': timestamp,
+            'line_hashes': [plugin.line_hash(audit_line)],
+            'pod_uid': 'pod-uid-1',
+            'container_id': 'containerd://one',
+            'restart_count': 0,
+        })
+
+        self.assertEqual(plugin.collect_once(), [])
+        cursor = decode_cursor(plugin.read_positions[target_id])
+        self.assertEqual(
+            cursor['line_hashes'],
+            [plugin.line_hash(audit_line), plugin.line_hash(server_line)],
         )
 
     def test_invalid_target_requires_exactly_one_selector_kind(self):

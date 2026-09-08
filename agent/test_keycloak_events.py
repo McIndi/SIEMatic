@@ -157,6 +157,33 @@ class KeycloakEventsPluginTests(SimpleTestCase):
             3,
         )
 
+    def test_boundary_cursor_retains_prior_fingerprints_at_same_millisecond(self):
+        timestamp = 1000
+        client = FakeKeycloakClient({
+            0: [
+                {'id': 'event-a', 'time': timestamp, 'type': 'LOGIN'},
+                {'id': 'event-b', 'time': timestamp, 'type': 'LOGOUT'},
+            ],
+        })
+        plugin = self.make_plugin(client)
+        plugin.acknowledged_positions[plugin.target_id] = encode_cursor({
+            'timestamp': timestamp,
+            'fingerprints': ['event-a'],
+        })
+
+        batches = plugin.collect_once(
+            timestamp=datetime.fromtimestamp(2, timezone.utc)
+        )
+
+        self.assertEqual(
+            [event['data']['id'] for event in batches[0]['events']],
+            ['event-b'],
+        )
+        self.assertEqual(
+            decode_cursor(batches[0]['cursor']),
+            {'timestamp': timestamp, 'fingerprints': ['event-a', 'event-b']},
+        )
+
     def test_failed_target_is_not_polled_again(self):
         client = FakeKeycloakClient({
             0: [{'id': 'event-1', 'time': 1000, 'type': 'LOGIN'}],
