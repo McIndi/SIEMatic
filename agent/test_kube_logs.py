@@ -29,12 +29,12 @@ class FakeKubernetesClient:
         return self.previous if previous else self.current
 
 
-def pod(*, uid='pod-uid-1', container_id='containerd://one', restart_count=0):
+def pod(*, uid='pod-uid-1', container='authbridge-proxy', container_id='containerd://one', restart_count=0):
     return {
         'metadata': {'name': 'weather-service-abc', 'uid': uid},
         'status': {
             'containerStatuses': [{
-                'name': 'authbridge-proxy',
+                'name': container,
                 'containerID': container_id,
                 'restartCount': restart_count,
             }],
@@ -152,7 +152,7 @@ class KubeLogsPluginTests(SimpleTestCase):
             'prefix': 'vault-audit: ',
         }
         client = FakeKubernetesClient(
-            pod(),
+            pod(container='vault'),
             current=(
                 '2026-09-07T12:00:01.000000000Z operational server message\n'
                 '2026-09-07T12:00:02.000000000Z vault-audit: {"type":"request","request":{"path":"secret/"}}\n'
@@ -168,7 +168,7 @@ class KubeLogsPluginTests(SimpleTestCase):
 
         self.assertEqual(len(batches[0]['events']), 2)
         self.assertEqual(
-            [event['type'] for event in batches[0]['events']],
+            [event['data']['type'] for event in batches[0]['events']],
             ['request', 'response'],
         )
 

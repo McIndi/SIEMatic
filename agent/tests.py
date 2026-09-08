@@ -176,6 +176,24 @@ class HeartbeatPayloadTests(SimpleTestCase):
         self.assertEqual(heartbeat['host'], 'node-a')
         self.assertEqual(heartbeat['sourcetype'], 'json')
 
+    def test_checkpointed_plugin_receives_indexer_connection_details(self):
+        from agent.management.commands.agent import build_plugin_config
+
+        indexer = {'host': 'siematic-indexer', 'port': 8000}
+        credentials = {'username': 'shipper', 'password': 'secret'}
+        config = build_plugin_config(
+            {'name': 'kube_logs', 'enabled': True},
+            {
+                'agent_id': 'kube-shipper',
+                'hostname': 'collector-0',
+                'indexer_credentials': credentials,
+            },
+            indexer,
+        )
+
+        self.assertEqual(config['indexer'], indexer)
+        self.assertEqual(config['indexer_credentials'], credentials)
+
 
 class IndexerTransportTests(SimpleTestCase):
     def test_plain_transport_remains_available(self):
