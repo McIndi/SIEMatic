@@ -183,7 +183,9 @@ class KubeLogsPluginTests(SimpleTestCase):
 
         plugin.collect_once(timestamp=started)
 
-        self.assertEqual(client.calls[-1][3], '2026-09-07T12:00:00Z')
+        self.assertEqual(
+            client.calls[-1][3], '2026-09-07T12:00:00.000000000Z'
+        )
 
     def test_quiet_first_poll_does_not_skip_lines_before_second_poll(self):
         client = FakeKubernetesClient(pod(), current='')
@@ -199,7 +201,9 @@ class KubeLogsPluginTests(SimpleTestCase):
         )
 
         self.assertEqual(batches[0]['events'][0]['data'], 'line-created-between-polls')
-        self.assertEqual(client.calls[-1][3], '2026-09-07T12:00:00Z')
+        self.assertEqual(
+            client.calls[-1][3], '2026-09-07T12:00:00.000000000Z'
+        )
 
     def test_quiet_first_poll_keeps_subsecond_lines_before_next_poll(self):
         client = FakeKubernetesClient(pod(), current='')
