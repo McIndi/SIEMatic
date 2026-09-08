@@ -29,7 +29,11 @@ from agent.plugins.base import (
     collection_status,
     fetch_checkpoints,
 )
-from agent.plugins.plugin_process_manager import get_indexer_transport, sender_process
+from agent.plugins.plugin_process_manager import (
+    config_log_summary,
+    get_indexer_transport,
+    sender_process,
+)
 from agent.plugins.host_security_posture_plugin import HostSecurityPosturePlugin
 from agent.plugins.network_security_plugin import NetworkSecurityPlugin
 from agent.plugins.watchdog_plugin import WatchdogPlugin
@@ -196,6 +200,23 @@ class HeartbeatPayloadTests(SimpleTestCase):
 
 
 class IndexerTransportTests(SimpleTestCase):
+    def test_plugin_config_log_summary_never_contains_secret_values(self):
+        summary = config_log_summary({
+            'name': 'kube_logs',
+            'indexer_credentials': {
+                'username': 'shipper',
+                'password': 'do-not-log-this',
+            },
+            'kubernetes': {'token': 'also-do-not-log-this'},
+        })
+
+        self.assertEqual(
+            summary,
+            'indexer_credentials,kubernetes,name',
+        )
+        self.assertNotIn('do-not-log-this', summary)
+        self.assertNotIn('also-do-not-log-this', summary)
+
     def test_plain_transport_remains_available(self):
         transport = get_indexer_transport({'tls': False})
 
