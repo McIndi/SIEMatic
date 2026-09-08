@@ -244,6 +244,13 @@ def sender_process(event_queue, indexer_cfg, credentials=None, ack_queue=None):
                                     websocket.recv(),
                                     timeout=indexer_cfg.get('ack_timeout', 30),
                                 ))
+                                if resume.get('type') == 'nack':
+                                    resume['status'] = resume.pop('type')
+                                    resume['target'] = pending['_target']
+                                    resume['batch_id'] = pending['batch_id']
+                                    ack_queue.put(resume)
+                                    pending = None
+                                    continue
                                 if resume.get('type') != 'resume_result':
                                     raise ConnectionError(
                                         f'Unexpected resume response: {resume!r}'
