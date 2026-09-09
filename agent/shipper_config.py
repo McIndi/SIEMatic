@@ -33,6 +33,22 @@ def plugins_for_role(role, environ):
                     'sourcetype': 'logfmt',
                 },
                 {
+                    'namespace': 'team1',
+                    'deployment': 'reservation-agent',
+                    'container': 'authbridge-proxy',
+                    'index': 'authbridge',
+                    'source': 'reservation-agent/authbridge-proxy',
+                    'sourcetype': 'logfmt',
+                },
+                {
+                    'namespace': 'team1',
+                    'deployment': 'reservation-tool',
+                    'container': 'authbridge-proxy',
+                    'index': 'authbridge',
+                    'source': 'reservation-tool/authbridge-proxy',
+                    'sourcetype': 'logfmt',
+                },
+                {
                     'namespace': 'vault',
                     'selector': 'app.kubernetes.io/name=vault',
                     'container': 'vault',

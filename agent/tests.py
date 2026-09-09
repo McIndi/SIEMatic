@@ -200,7 +200,7 @@ class HeartbeatPayloadTests(SimpleTestCase):
 
 
 class IndexerTransportTests(SimpleTestCase):
-    def test_kube_shipper_is_limited_to_the_three_audit_targets(self):
+    def test_kube_shipper_is_limited_to_the_known_audit_targets(self):
         from agent.shipper_config import plugins_for_role
 
         plugins = plugins_for_role('kube_logs', {})
@@ -209,7 +209,11 @@ class IndexerTransportTests(SimpleTestCase):
         self.assertEqual(plugins[0]['name'], 'kube_logs')
         self.assertEqual(
             [target['namespace'] for target in plugins[0]['targets']],
-            ['team1', 'team1', 'vault'],
+            ['team1', 'team1', 'team1', 'team1', 'vault'],
+        )
+        self.assertEqual(
+            [target['deployment'] for target in plugins[0]['targets'][:-1]],
+            ['weather-service', 'weather-tool', 'reservation-agent', 'reservation-tool'],
         )
         self.assertTrue(plugins[0]['targets'][-1]['vault_audit'])
 
