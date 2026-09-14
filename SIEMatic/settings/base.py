@@ -430,6 +430,7 @@ SIEMATIC_SEARCH = {
         "search2.commands.explode:ExplodeCmd",
         "search2.commands.event_split:EventSplitCmd",
         "search2.commands.drop:DropCmd",
+        "search2.commands.select:SelectCmd",
         "search2.commands.fillnull:FillNullCmd",
         "search2.commands.run_saved_search:RunSavedSearchCommand",
         "search2.commands.filter:FilterCmd",

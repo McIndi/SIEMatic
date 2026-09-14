@@ -602,6 +602,20 @@ class PipelineCommandTests(TestCase):
         self.assertEqual(set(records[0]), {"value"})
         self.assertEqual(list(dataframe.columns), ["value"])
 
+    def test_select_supports_records_dataframes_and_querysets(self):
+        import pandas as pd
+        from events.models import Event
+
+        query = "select --fields='[\"value\", \"host\"]'"
+        records = run_pipeline(self.rows, query)
+        dataframe = run_pipeline(pd.DataFrame(self.rows), query)
+        Event.objects.create(host="queryset-host", data="{}")
+        queryset = run_pipeline(Event.objects.all(), "select --fields='[\"data\", \"host\"]'")
+
+        self.assertEqual(records[0], {"value": 2, "host": "beta"})
+        self.assertEqual(list(dataframe.columns), ["value", "host"])
+        self.assertEqual(list(queryset), [{"data": "{}", "host": "queryset-host"}])
+
     def test_stats_lowercase_avg_supports_all_backends(self):
         import pandas as pd
         from events.models import Event
