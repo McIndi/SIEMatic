@@ -41,8 +41,8 @@ accept `1`, `true`, `yes`, or `on` (case-insensitive); other values are false.
 | `INDEXER_TLS` | value of `SIEMATIC_TLS_ENABLED` | Enables TLS for agent-to-indexer transport. |
 | `INDEXER_USERNAME` | none | Username used by an agent to authenticate to the indexer. |
 | `OIDC_GROUP_CLAIM` | `realm_access.roles` | Dotted path to the roles claim. Keycloak nests realm roles here. |
-| `OIDC_GROUP_MAP` | `{}` | JSON object mapping a provider role to the Django groups it grants, for example `{"rossoctl-admin": ["Registered User"]}`. Rewritten on every login. |
-| `OIDC_ISSUER` | empty | Realm issuer URL, for example `https://keycloak.example/realms/rossoctl`. Setting it turns provider login on; leaving it empty keeps local passwords as the only option. |
+| `OIDC_GROUP_MAP` | `{}` | JSON object mapping a provider role to the Django groups it grants, for example `{"example-admin": ["Registered User"]}`. Rewritten on every login. |
+| `OIDC_ISSUER` | empty | Realm issuer URL, for example `https://keycloak.example/realms/example`. Setting it turns provider login on; leaving it empty keeps local passwords as the only option. |
 | `OIDC_OP_AUTHORIZATION_ENDPOINT` | derived from `OIDC_ISSUER` | Override for a provider that does not use Keycloak's endpoint layout. |
 | `OIDC_OP_JWKS_ENDPOINT` | derived from `OIDC_ISSUER` | Override for the signing key set. |
 | `OIDC_OP_TOKEN_ENDPOINT` | derived from `OIDC_ISSUER` | Override for the token endpoint. |
@@ -60,8 +60,21 @@ accept `1`, `true`, `yes`, or `on` (case-insensitive); other values are false.
 | `SIEMATIC_ANON_THROTTLE_RATE` | `20/hour` | DRF anonymous request throttle rate. |
 | `SIEMATIC_INGEST_THROTTLE_RATE` | `20000/hour` | DRF event-ingestion throttle rate. |
 | `SIEMATIC_SEARCH_THROTTLE_RATE` | `120/min` | DRF search throttle rate. |
-| `SIEMATIC_SHIPPER_ROLE` | empty | Replaces the default plugin list with the single plugin for one shipper role, either `kube_logs` or `keycloak_events`. Empty keeps the normal plugin set. Each role runs in its own Deployment so one shipper's credentials are not readable from the other's pod. |
+| `SIEMATIC_AGENT_PROFILE` | empty | Path to one JSON profile that replaces the default plugin list with one restricted plugin. Empty keeps the normal plugin set. Credentials come from environment variables, not the profile file. |
 | `SIEMATIC_TLS_ENABLED` | `False` | Enables HTTPS-oriented cookie, redirect, and HSTS settings. |
+
+## Agent profiles
+
+An agent profile is one JSON document with `version`, `plugin`, and
+`poll_interval`. A `kube_logs` profile also has a non-empty `targets` list.
+Each target needs `namespace`, `deployment` or `selector`, `container`,
+`index`, `source`, and `sourcetype`. A `keycloak_events` profile needs
+`realm`, `index`, `source`, and `host`.
+
+The loader requires `INDEXER_USERNAME` and `INDEXER_PASSWORD`. A Keycloak
+profile also requires `KEYCLOAK_BASE_URL`, `KEYCLOAK_CLIENT_ID`,
+`KEYCLOAK_CLIENT_SECRET`, and `KEYCLOAK_TOKEN_REALM`. It accepts the optional
+`KEYCLOAK_CA_BUNDLE`. Profiles never contain credentials.
 
 ## Python settings
 

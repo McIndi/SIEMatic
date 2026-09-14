@@ -98,7 +98,7 @@ class LogfmtExtractionTests(TestCase):
     def test_quoted_value_keeps_its_spaces(self):
         event = Event.objects.create(
             sourcetype='logfmt',
-            data='time=2026-09-02T17:21:19.585Z level=INFO msg="pipeline: response frame cancelled" plugin=ibac',
+            data='time=2026-09-02T17:21:19.585Z level=INFO msg="pipeline: response frame cancelled" plugin=example',
         )
 
         self.assertEqual(
@@ -107,7 +107,7 @@ class LogfmtExtractionTests(TestCase):
                 'time': '2026-09-02T17:21:19.585Z',
                 'level': 'INFO',
                 'msg': 'pipeline: response frame cancelled',
-                'plugin': 'ibac',
+                'plugin': 'example',
             },
         )
 
@@ -174,7 +174,7 @@ class ObjectEventDataTests(TestCase):
         self.assertEqual(event.extracted_fields, {'message': 'hello', 'severity': 3})
 
     def test_string_data_is_stored_unchanged(self):
-        raw = 'time=2026-09-02T17:21:19.585Z level=INFO plugin=ibac'
+        raw = 'time=2026-09-02T17:21:19.585Z level=INFO plugin=example'
         response = self.client.post(
             reverse('event-list'),
             {'sourcetype': 'logfmt', 'data': raw},
@@ -184,7 +184,7 @@ class ObjectEventDataTests(TestCase):
         self.assertEqual(response.status_code, 201, response.data)
         event = Event.objects.get()
         self.assertEqual(event.data, raw)
-        self.assertEqual(event.extracted_fields['plugin'], 'ibac')
+        self.assertEqual(event.extracted_fields['plugin'], 'example')
 
     def test_list_data_is_encoded(self):
         response = self.client.post(

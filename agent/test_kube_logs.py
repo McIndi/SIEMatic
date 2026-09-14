@@ -30,9 +30,9 @@ class FakeKubernetesClient:
         return self.previous if previous else self.current
 
 
-def pod(*, uid='pod-uid-1', container='authbridge-proxy', container_id='containerd://one', restart_count=0):
+def pod(*, uid='pod-uid-1', container='example-container', container_id='containerd://one', restart_count=0):
     return {
-        'metadata': {'name': 'weather-service-abc', 'uid': uid},
+        'metadata': {'name': 'example-deployment-abc', 'uid': uid},
         'status': {
             'containerStatuses': [{
                 'name': container,
@@ -45,11 +45,11 @@ def pod(*, uid='pod-uid-1', container='authbridge-proxy', container_id='containe
 
 class KubeLogsPluginTests(SimpleTestCase):
     target = {
-        'namespace': 'team1',
-        'deployment': 'weather-service',
-        'container': 'authbridge-proxy',
-        'index': 'authbridge',
-        'source': 'weather-service/authbridge-proxy',
+        'namespace': 'example-namespace',
+        'deployment': 'example-deployment',
+        'container': 'example-container',
+        'index': 'example-index',
+        'source': 'example-deployment/example-container',
         'sourcetype': 'logfmt',
     }
 
@@ -135,7 +135,7 @@ class KubeLogsPluginTests(SimpleTestCase):
             ['old-container-line', 'new-container-line'],
         )
         self.assertIn(
-            ('logs', 'weather-service-abc', 'authbridge-proxy', old_timestamp, True),
+            ('logs', 'example-deployment-abc', 'example-container', old_timestamp, True),
             client.calls,
         )
         cursor = decode_cursor(batches[0]['cursor'])
@@ -145,7 +145,7 @@ class KubeLogsPluginTests(SimpleTestCase):
     def test_vault_target_keeps_only_request_and_response_audit_records(self):
         vault_target = {
             'namespace': 'vault',
-            'selector': 'app.kubernetes.io/name=vault',
+            'selector': 'app.kubernetes.io/name=example',
             'container': 'vault',
             'index': 'vault',
             'source': 'vault/audit',
@@ -274,7 +274,7 @@ class KubeLogsPluginTests(SimpleTestCase):
         server_line = 'server message'
         vault_target = {
             'namespace': 'vault',
-            'selector': 'app.kubernetes.io/name=vault',
+            'selector': 'app.kubernetes.io/name=example',
             'container': 'vault',
             'index': 'vault',
             'source': 'vault/audit',

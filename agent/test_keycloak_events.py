@@ -34,9 +34,9 @@ class KeycloakEventsPluginTests(SimpleTestCase):
                 'agent_id': 'shipper-keycloak-events',
                 'hostname': 'keycloak-events-0',
                 'version': '1.0',
-                'realm': 'rossoctl',
+                'realm': 'example-realm',
                 'index': 'keycloak',
-                'source': 'keycloak/rossoctl',
+                'source': 'keycloak/example-realm',
                 'poll_interval': 30,
                 **config,
             },
@@ -260,7 +260,7 @@ class KeycloakApiClientTests(SimpleTestCase):
         )
 
         events = client.fetch_events(
-            'rossoctl', date_from=1, date_to=2, first=0, max_results=100
+            'example-realm', date_from=1, date_to=2, first=0, max_results=100
         )
 
         self.assertEqual(events[0]['id'], 'event-1')

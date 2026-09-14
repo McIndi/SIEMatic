@@ -105,14 +105,14 @@ class WebSocketBatchIngestTests(TestCase):
     def test_explicit_logfmt_data_is_stored_raw_for_field_extraction(self):
         line = (
             'time=2026-09-06T12:21:31.793Z level=INFO '
-            'msg="pipeline: plugin rejected request" plugin=ibac '
+            'msg="pipeline: plugin rejected request" plugin=example '
             'status=403 code=ibac.blocked reason="policy denied"'
         )
         events = _bulk_create_events([
             _build_event({
-                'index': 'authbridge',
-                'source': 'weather-service/authbridge-proxy',
-                'host': 'weather-service-abc',
+                'index': 'example-index',
+                'source': 'example-deployment/example-container',
+                'host': 'example-deployment-abc',
                 'sourcetype': 'logfmt',
                 'data': line,
             }, strict_payload=True)
@@ -121,7 +121,7 @@ class WebSocketBatchIngestTests(TestCase):
         self.assertEqual(events[0].data, line)
         self.assertTrue(
             Event.objects.filter(
-                index='authbridge',
+                index='example-index',
                 extracted_fields__code='ibac.blocked',
             ).exists()
         )
@@ -155,8 +155,8 @@ class WebSocketBatchIngestTests(TestCase):
     def test_structured_json_data_exposes_vault_audit_fields(self):
         audit_record = {
             'type': 'request',
-            'request': {'path': 'rossoctl/data/mcp-gateway'},
-            'auth': {'display_name': 'kubernetes-team1'},
+            'request': {'path': 'example/data/service'},
+            'auth': {'display_name': 'example-service-account'},
         }
 
         events = _bulk_create_events([_build_event({
@@ -170,14 +170,14 @@ class WebSocketBatchIngestTests(TestCase):
         self.assertTrue(
             Event.objects.filter(
                 index='vault',
-                extracted_fields__request__path='rossoctl/data/mcp-gateway',
+                extracted_fields__request__path='example/data/service',
             ).exists()
         )
 
     def test_raw_sourcetype_without_data_is_rejected(self):
         with self.assertRaisesRegex(ProtocolError, 'invalid_raw_payload'):
             _build_event({
-                'index': 'authbridge',
+                'index': 'example-index',
                 'sourcetype': 'logfmt',
                 'line': 'code=ibac.blocked',
             }, strict_payload=True)
@@ -484,8 +484,8 @@ class CheckpointProtocolTests(TransactionTestCase):
     def test_missing_raw_data_is_a_permanent_protocol_error(self):
         invalid = dict(self.batch)
         invalid['events'] = [{
-            'index': 'authbridge',
-            'source': 'weather-service/authbridge-proxy',
+                'index': 'example-index',
+                'source': 'example-deployment/example-container',
             'sourcetype': 'logfmt',
             'line': 'code=ibac.blocked',
         }]

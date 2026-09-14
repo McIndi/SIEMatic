@@ -25,11 +25,11 @@ def fake_access_token(claims):
 
 class DecodeJwtPayloadTests(TestCase):
     def test_it_reads_claims_from_a_well_formed_token(self):
-        token = fake_access_token({'realm_access': {'roles': ['rossoctl-admin']}})
+        token = fake_access_token({'realm_access': {'roles': ['example-admin']}})
 
         self.assertEqual(
             decode_jwt_payload(token),
-            {'realm_access': {'roles': ['rossoctl-admin']}},
+            {'realm_access': {'roles': ['example-admin']}},
         )
 
     def test_it_returns_nothing_for_junk(self):
@@ -51,8 +51,8 @@ class ClaimPathTests(TestCase):
 @override_settings(
     OIDC_GROUP_CLAIM='realm_access.roles',
     OIDC_GROUP_MAP={
-        'rossoctl-admin': [REGISTERED_GROUP_NAME],
-        'rossoctl-viewer': [REGISTERED_GROUP_NAME],
+        'example-admin': [REGISTERED_GROUP_NAME],
+        'example-viewer': [REGISTERED_GROUP_NAME],
     },
     OIDC_STAFF_ROLES=[],
     OIDC_SUPERUSER_ROLES=[],
@@ -71,7 +71,7 @@ class GroupMappingTests(TestCase):
         user = self.make_user()
 
         self.backend.sync_user(
-            user, {'realm_access': {'roles': ['rossoctl-admin']}}
+            user, {'realm_access': {'roles': ['example-admin']}}
         )
 
         self.assertEqual(
@@ -96,7 +96,7 @@ class GroupMappingTests(TestCase):
 
         self.backend.sync_user(
             user,
-            {'realm_access': {'roles': ['rossoctl-admin', 'rossoctl-viewer', 'Agent']}},
+            {'realm_access': {'roles': ['example-admin', 'example-viewer', 'Agent']}},
         )
 
         self.assertNotIn(
@@ -113,16 +113,16 @@ class GroupMappingTests(TestCase):
     def test_a_group_named_in_the_map_but_absent_is_skipped(self):
         user = self.make_user()
 
-        with override_settings(OIDC_GROUP_MAP={'rossoctl-admin': ['No Such Group']}):
+        with override_settings(OIDC_GROUP_MAP={'example-admin': ['No Such Group']}):
             self.backend.sync_user(
-                user, {'realm_access': {'roles': ['rossoctl-admin']}}
+                user, {'realm_access': {'roles': ['example-admin']}}
             )
 
         self.assertEqual(list(user.groups.values_list('name', flat=True)), [])
 
     def test_admin_flags_stay_off_by_default(self):
         user = self.backend.sync_user(
-            self.make_user(), {'realm_access': {'roles': ['rossoctl-admin']}}
+            self.make_user(), {'realm_access': {'roles': ['example-admin']}}
         )
 
         self.assertFalse(user.is_staff)
@@ -190,7 +190,7 @@ class UserinfoMergeTests(TestCase):
         # userinfo endpoint, so reading only userinfo yields no roles at all.
         backend = SIEMaticOIDCBackend.__new__(SIEMaticOIDCBackend)
         token = fake_access_token(
-            {'realm_access': {'roles': ['rossoctl-admin']}, 'email': 'stale@example.test'}
+            {'realm_access': {'roles': ['example-admin']}, 'email': 'stale@example.test'}
         )
 
         with_userinfo = {'email': 'current@example.test', 'preferred_username': 'lee'}
@@ -203,7 +203,7 @@ class UserinfoMergeTests(TestCase):
         finally:
             SIEMaticOIDCBackend.__mro__[1].get_userinfo = original
 
-        self.assertEqual(claims['realm_access']['roles'], ['rossoctl-admin'])
+        self.assertEqual(claims['realm_access']['roles'], ['example-admin'])
         # Userinfo wins where both carry the same key.
         self.assertEqual(claims['email'], 'current@example.test')
 
