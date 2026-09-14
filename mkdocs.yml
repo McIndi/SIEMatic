@@ -40,6 +40,7 @@ nav:
       - Scaling and Performance: operations/scaling-and-performance.md
       - Backup and Restore: operations/backup-and-restore.md
       - Troubleshooting: operations/troubleshooting.md
+      - Run a Kubernetes Shipper: how-to-guides/run-a-kubernetes-shipper.md
   - Search and Dashboards:
       - Overview: search-and-dashboards/index.md
       - Search Language: search-and-dashboards/search-language.md
