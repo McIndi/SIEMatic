@@ -602,10 +602,70 @@ class PipelineCommandTests(TestCase):
         self.assertEqual(set(records[0]), {"value"})
         self.assertEqual(list(dataframe.columns), ["value"])
 
+    def test_stats_lowercase_avg_supports_all_backends(self):
+        import pandas as pd
+        from events.models import Event
+
+        rows = [{"id": 2}, {"id": 4}]
+        Event.objects.create(data="{}")
+        Event.objects.create(data="{}")
+        query = "stats --aggregations='[\"avg(id)\"]'"
+
+        records = run_pipeline(rows, query)
+        dataframe = run_pipeline(pd.DataFrame(rows), query)
+        queryset = run_pipeline(Event.objects.all(), query)
+
+        self.assertEqual(records, [{"avg_id_0": 3.0}])
+        self.assertEqual(dataframe, [{"avg_id_0": 3.0}])
+        self.assertEqual(queryset, [{"avg_id_0": 1.5}])
+
+    def test_stats_dataframe_grouped_mixed_aggregations(self):
+        import pandas as pd
+
+        result = run_pipeline(
+            pd.DataFrame([
+                {"host": "alpha", "duration": 2, "size": 10},
+                {"host": "alpha", "duration": 4, "size": 8},
+                {"host": "beta", "duration": 1, "size": 12},
+            ]),
+            "stats --aggregations='[\"count\", \"avg(duration)\", \"max(size)\"]' "
+            "--by='[\"host\"]'",
+        )
+
+        self.assertEqual(
+            result.to_dict("records"),
+            [
+                {"host": "alpha", "count_0": 2, "avg_duration_1": 3.0, "max_size_2": 10},
+                {"host": "beta", "count_0": 1, "avg_duration_1": 1.0, "max_size_2": 12},
+            ],
+        )
+
     def test_drop_ignores_fields_that_are_not_present(self):
         result = run_pipeline(self.rows, "drop --fields='[\"missing\"]'")
 
         self.assertEqual(result, self.rows)
+
+    def test_fillnull_supports_records_dataframes_and_querysets(self):
+        import pandas as pd
+        from events.models import Event
+
+        query = "fillnull --field=host --value=replacement"
+        rows = [{"host": None, "value": 1}, {"host": "alpha", "value": None}]
+        records = run_pipeline(rows, query)
+        dataframe = run_pipeline(pd.DataFrame(rows), query)
+        Event.objects.create(host="queryset-host", data="{}", extracted_fields=None)
+        queryset = run_pipeline(
+            Event.objects.values("host", "extracted_fields"),
+            "fillnull --field=extracted_fields --value=replacement",
+        )
+
+        self.assertEqual(records, [{"host": "replacement", "value": 1}, {"host": "alpha", "value": None}])
+        self.assertIsNone(rows[0]["host"])
+        self.assertEqual(list(dataframe["host"]), ["replacement", "alpha"])
+        self.assertEqual(
+            queryset,
+            [{"host": "queryset-host", "extracted_fields": "replacement"}],
+        )
 
     def test_drop_and_explode_support_querysets(self):
         from events.models import Event
@@ -643,6 +703,29 @@ class PipelineCommandTests(TestCase):
         self.assertNotIn("extracted_fields", exploded_row)
         self.assertEqual(exploded_row["extracted_fields_kind"], "server")
         self.assertEqual(exploded_row["extracted_fields_code"], 200)
+
+    def test_explode_supports_renamed_queryset_json_field(self):
+        from events.models import Event
+
+        user = User.objects.create_user(username="renameexplode", password="testpass")
+        Event.objects.create(
+            index="vault",
+            data="{}",
+            extracted_fields={"kind": "server", "code": 200},
+        )
+
+        result = run_pipeline(
+            None,
+            "search --filter='index=\"vault\"' --order-by='[\"-created\"]' "
+            "--select '[\"extracted_fields\"]' | "
+            "rename --mapping '{\"extracted_fields\": \"foo\"}' | "
+            "explode --field foo",
+            request=SimpleNamespace(user=user),
+        )
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result.iloc[0]["foo_kind"], "server")
+        self.assertEqual(result.iloc[0]["foo_code"], 200)
 
     def test_pipeline_substitutes_environment_parameters(self):
         result = run_pipeline(

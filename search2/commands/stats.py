@@ -5,6 +5,18 @@ from search2.engine.expression_util import parse_field_expressions, convert_to_d
 
 logger = logging.getLogger(__name__)
 
+
+AGGREGATION_FUNCTIONS = {
+    "sum": "Sum",
+    "avg": "Avg",
+    "count": "Count",
+    "max": "Max",
+    "min": "Min",
+    "stddev": "StdDev",
+    "variance": "Variance",
+}
+
+
 class StatsCmd:
     """Stats command for computing statistics over a result set.
     Examples:
@@ -18,7 +30,7 @@ class StatsCmd:
         p.add_argument(
             "--aggregations",
             required=True,
-            help="""Python list literal of aggregation expressions, e.g. '["count", "avg(field)", "sum(field)", "max(field)", "min(field)"]'"""
+            help="""Python list literal of aggregation expressions. Count, Sum, Avg, Min, and Max work for all backends; StdDev and Variance require QuerySets. Function names are case-insensitive."""
         )
         p.add_argument(
             "--by",
@@ -29,7 +41,7 @@ class StatsCmd:
         raise NotImplementedError("stats command requires input data")
 
     def run_qs(self, qs, args, ctx):
-        aggregations = parse_field_expressions(parse_literal_list(args.aggregations, "--aggregations"))
+        aggregations = self._aggregations(args)
         logger.debug("Parsed aggregations: %s", aggregations)
         
         annotations = {}
@@ -75,7 +87,7 @@ class StatsCmd:
 
     def run_df(self, df, args, ctx):
         import pandas as pd
-        aggregations = parse_field_expressions(parse_literal_list(args.aggregations, "--aggregations"))
+        aggregations = self._aggregations(args)
         
         group_by_fields = []
         if args.by:
@@ -84,28 +96,25 @@ class StatsCmd:
         
         if group_by_fields:
             # Grouped stats
-            agg_dict = {}
-            rename_dict = {}
+            grouped = df.groupby(group_by_fields, dropna=False)
+            result = grouped.size().reset_index().iloc[:, :len(group_by_fields)]
             for i, agg in enumerate(aggregations):
                 if isinstance(agg, str):
                     if agg.lower() == 'count':
-                        # Special case for count without field
-                        result = df.groupby(group_by_fields).size().reset_index(name=f'count_{i}')
-                        # For multiple, need to merge, but for simplicity, assume one
-                        return result
+                        result[f'count_{i}'] = grouped.size().to_numpy()
+                    else:
+                        raise ValueError(f"Unsupported aggregation: {agg}")
                 elif isinstance(agg, tuple):
                     func_name, func_args, func_kwargs = agg
                     func_entry = SUPPORTED_FUNCTIONS.get(func_name)
                     if func_entry and 'df' in func_entry and func_args:
                         field = func_args[0]
-                        agg_dict[field] = func_entry['df']
-                        rename_dict[f'{field}_{func_entry["df"].__name__}'] = f'{func_name.lower()}_{field}_{i}'
+                        result[f'{func_name.lower()}_{field}_{i}'] = (
+                            grouped[field].agg(func_entry['df']).to_numpy()
+                        )
                     else:
                         raise ValueError(f"Unsupported aggregation: {agg}")
-            if agg_dict:
-                result = df.groupby(group_by_fields).agg(agg_dict).reset_index()
-                result = result.rename(columns=rename_dict)
-                return result
+            return result
         else:
             # Overall stats
             result = {}
@@ -113,6 +122,8 @@ class StatsCmd:
                 if isinstance(agg, str):
                     if agg.lower() == 'count':
                         result[f'count_{i}'] = len(df)
+                    else:
+                        raise ValueError(f"Unsupported aggregation: {agg}")
                 elif isinstance(agg, tuple):
                     func_name, func_args, func_kwargs = agg
                     func_entry = SUPPORTED_FUNCTIONS.get(func_name)
@@ -125,7 +136,7 @@ class StatsCmd:
             return [result]
 
     def run_records(self, rows, args, ctx):
-        aggregations = parse_field_expressions(parse_literal_list(args.aggregations, "--aggregations"))
+        aggregations = self._aggregations(args)
         
         group_by_fields = []
         if args.by:
@@ -146,6 +157,8 @@ class StatsCmd:
                     if isinstance(agg, str):
                         if agg.lower() == 'count':
                             result[f'count_{i}'] = len(group_rows)
+                        else:
+                            raise ValueError(f"Unsupported aggregation: {agg}")
                     elif isinstance(agg, tuple):
                         func_name, func_args, func_kwargs = agg
                         func_entry = SUPPORTED_FUNCTIONS.get(func_name)
@@ -164,6 +177,8 @@ class StatsCmd:
                 if isinstance(agg, str):
                     if agg.lower() == 'count':
                         result[f'count_{i}'] = len(rows)
+                    else:
+                        raise ValueError(f"Unsupported aggregation: {agg}")
                 elif isinstance(agg, tuple):
                     func_name, func_args, func_kwargs = agg
                     func_entry = SUPPORTED_FUNCTIONS.get(func_name)
@@ -174,3 +189,20 @@ class StatsCmd:
                     else:
                         raise ValueError(f"Unsupported aggregation: {agg}")
             return [result]
+
+    @staticmethod
+    def _aggregations(args):
+        expressions = parse_field_expressions(
+            parse_literal_list(args.aggregations, "--aggregations")
+        )
+        normalized = []
+        for expression in expressions:
+            if isinstance(expression, tuple):
+                function_name, function_args, function_kwargs = expression
+                canonical_name = AGGREGATION_FUNCTIONS.get(function_name.lower())
+                if not canonical_name:
+                    raise ValueError(f"Unsupported aggregation function: {function_name}")
+                normalized.append((canonical_name, function_args, function_kwargs))
+            else:
+                normalized.append(expression)
+        return normalized

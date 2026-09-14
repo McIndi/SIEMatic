@@ -1,5 +1,7 @@
-import ast
+import pandas as pd
+
 from search2.engine.literals import parse_literal
+from search2.utils import coerce_to_list_of_dicts
 
 
 class RenameCmd:
@@ -20,9 +22,8 @@ class RenameCmd:
         raise NotImplementedError("rename command requires input data")
 
     def run_qs(self, qs, args, ctx):
-        """Rename columns - convert to DataFrame since Django ORM doesn't support column renaming."""
-        from django_pandas.io import read_frame
-        df = read_frame(qs)
+        """Rename columns after preserving the queryset's current projection."""
+        df = pd.DataFrame.from_records(coerce_to_list_of_dicts(qs))
         return self.run_df(df, args, ctx)
 
     def run_df(self, df, args, ctx):
