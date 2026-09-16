@@ -36,6 +36,7 @@ Arguments can contain placeholders that SIEMatic expands when a pipeline begins:
 
 - `{now}`, `{today}`, `{yesterday}`, and `{timezone}`
 - `{this_minute}`, `{last_minute}`, `{this_hour}`, and `{last_hour}`
+- `{last_15_minutes}` and `{last_30_minutes}`
 - `{this_day}`, `{last_day}`, `{this_week}`, and `{last_week}`
 - `{this_month}`, `{last_month}`, `{this_year}`, and `{last_year}`
 - `{last_7_days}` and `{last_30_days}`.
