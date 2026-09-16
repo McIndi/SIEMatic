@@ -4,7 +4,7 @@
 import logging
 import ast
 
-from django.db.models import F, Value, Q, Func, ExpressionWrapper
+from django.db.models import F, Value, Q, Func, ExpressionWrapper, Case, When
 from django.db.models.fields.json import KT
 from django.db.models import (
     DurationField,
@@ -106,6 +106,11 @@ def _python_length(val):
     return len(val)
 
 SUPPORTED_FUNCTIONS = {
+    'Cast': {'qs': Cast},
+    'Coalesce': {'qs': Coalesce},
+    'Concat': {'qs': Concat},
+    'Case': {'qs': Case},
+    'When': {'qs': When},
     'ExpressionWrapper': {
         'qs': ExpressionWrapper,
     },

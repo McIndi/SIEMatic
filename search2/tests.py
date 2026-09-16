@@ -437,6 +437,77 @@ class TruncSecondTests(TestCase):
         self.assertTrue(callable(TruncSecond))
 
 
+class ConditionalExpressionTests(TestCase):
+    def test_functions_are_registered_for_queryset_only(self):
+        from django.db.models import Case, When
+        from django.db.models.functions import Cast, Coalesce, Concat
+        from search2.engine.expression_util import SUPPORTED_FUNCTIONS
+
+        for function in (Cast, Coalesce, Concat, Case, When):
+            with self.subTest(function=function.__name__):
+                self.assertIn(function.__name__, SUPPORTED_FUNCTIONS)
+                self.assertEqual(SUPPORTED_FUNCTIONS[function.__name__], {'qs': function})
+                self.assertTrue(callable(function))
+
+    def setUp(self):
+        from events.models import Event
+
+        self.request = SimpleNamespace(user=User.objects.create_user(username='expression-user'))
+        Event.objects.bulk_create([
+            Event(data='{}', extracted_fields={'code': code, 'time': '2026-09-16T12:34:56Z'})
+            for code in ('ibac.blocked', 'ibac.allowed')
+        ])
+
+    def test_case_when_labels_rows_with_literal_conditions_and_values(self):
+        result = run_pipeline(
+            None,
+            'search | annotate --set=\'label=Case(When(extracted_fields__code="ibac.blocked", '
+            'then=Value("Blocked")), default=Value("Allowed"))\' | groupby --keys=\'["label"]\'',
+            request=self.request,
+        )
+        rows = coerce_to_list_of_dicts(result)
+        self.assertEqual(sorted(rows, key=lambda row: row['label']), [
+            {'label': 'Allowed', 'count': 1},
+            {'label': 'Blocked', 'count': 1},
+        ])
+
+    def test_unwrapped_then_and_default_strings_are_field_references(self):
+        from django.core.exceptions import FieldError
+
+        for then, default, missing in [
+            ('"Blocked"', 'Value("Allowed")', 'Blocked'),
+            ('Value("Blocked")', '"Allowed"', 'Allowed'),
+        ]:
+            with self.subTest(argument=missing), self.assertRaisesMessage(FieldError, missing):
+                list(run_pipeline(
+                    None,
+                    'search | annotate --set=\'label=Case(When(extracted_fields__code="ibac.blocked", '
+                    f'then={then}), default={default})\'',
+                    request=self.request,
+                ))
+
+    def test_cast_accepts_bare_field_type(self):
+        from datetime import timezone
+
+        result = run_pipeline(
+            None,
+            "search | annotate --set='timestamp=Cast(extracted_fields__time, output_field=DateTimeField)'",
+            request=self.request,
+        )
+        self.assertEqual(
+            list(result.values_list('timestamp', flat=True)),
+            [datetime(2026, 9, 16, 12, 34, 56, tzinfo=timezone.utc)] * 2,
+        )
+
+    def test_cast_rejects_field_type_call(self):
+        with self.assertRaisesMessage(ValueError, 'Function DateTimeField is not supported for QuerySet'):
+            run_pipeline(
+                None,
+                "search | annotate --set='timestamp=Cast(extracted_fields__time, output_field=DateTimeField())'",
+                request=self.request,
+            )
+
+
 class ChartComponentTests(TestCase):
     """Tests for the ChartComponent functionality."""
     

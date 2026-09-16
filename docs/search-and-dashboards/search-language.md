@@ -75,9 +75,14 @@ portable across database engines.
 Expressions support an allowlist of Django functions. The list includes
 aggregation, string, math, date/time, JSON, and utility functions. Examples are
 `Avg`, `Sum`, `Count`, `Min`, `Max`, `Lower`, `Upper`, `Length`, `Round`, `Now`,
-`TruncDate`, `F`, `Q`, and `Value`. Support differs by dataset backend. A
+`TruncDate`, `F`, `Q`, `Value`, `Cast`, `Coalesce`, `Concat`, `Case`, and `When`.
+Support differs by dataset backend. A
 function that supports a Django QuerySet can lack an equivalent for DataFrames
 or records.
+
+Wrap literal strings in `then=` and `default=` with `Value(...)`; `When` condition
+kwargs accept plain literals. Write field-type arguments without parentheses,
+for example `output_field=DateTimeField`.
 
 ## Cross-database joins
 
