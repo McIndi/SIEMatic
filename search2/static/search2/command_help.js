@@ -25,7 +25,7 @@
       order: [],
       responsive: true,
       layout: {
-        topLeft: {
+        topStart: {
           buttons: [
             'copy', 'csv', 'excel', 'pdf', 'print'
           ]
