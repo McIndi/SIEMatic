@@ -136,12 +136,12 @@ class DashboardRefreshControlTests(TestCase):
         self.assertIsNotNone(response.context['panel_data'])
         self.assertEqual(len(response.context['panel_data']), 1)
 
-    def test_dropdown_offers_the_four_intervals(self):
+    def test_dropdown_offers_the_six_intervals(self):
         response = self.client.get(self.url)
 
         self.assertEqual(
             response.context['refresh_choices'],
-            [(0, 'None'), (60, '1 minute'), (300, '5 minutes'), (600, '10 minutes')],
+            [(0, 'None'), (15, '15 seconds'), (30, '30 seconds'), (60, '1 minute'), (300, '5 minutes'), (600, '10 minutes')],
         )
 
     def test_default_is_no_refresh(self):

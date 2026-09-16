@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 # Auto-refresh intervals offered on a dashboard, in seconds. Zero is off.
 REFRESH_CHOICES = [
     (0, 'None'),
+    (15, '15 seconds'),
+    (30, '30 seconds'),
     (60, '1 minute'),
     (300, '5 minutes'),
     (600, '10 minutes'),
