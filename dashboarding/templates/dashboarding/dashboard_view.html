@@ -341,7 +341,12 @@
 
 {% if panel_data %}
     {% for item in panel_data %}
-        <div class="card mb-4">
+        {% if item.row_start %}
+            {% if not forloop.first %}</div>{% endif %}
+            <div class="row">
+        {% endif %}
+        <div class="col-12{% if item.col_span == 6 %} col-lg-6{% elif item.col_span == 4 %} col-lg-4{% elif item.col_span == 3 %} col-lg-3{% elif item.col_span == 2 %} col-lg-2{% elif item.col_span == 1 %} col-lg-1{% endif %} mb-4">
+        <div class="card h-100">
             <div class="card-header text-center">
                 <h5 class="mb-0">{{ item.panel.title }}</h5>
             </div>
@@ -392,6 +397,8 @@
                 {% endif %}
             </div>
         </div>
+        </div>
+        {% if forloop.last %}</div>{% endif %}
     {% endfor %}
 {% endif %}
 {% endblock %}

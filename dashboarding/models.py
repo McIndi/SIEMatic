@@ -45,11 +45,13 @@ class Panel(models.Model):
     by_field = models.CharField(max_length=128, blank=True, null=True)
     title = models.CharField(max_length=255, blank=True, null=True)
     order = models.PositiveIntegerField(default=0)
+    row = models.PositiveIntegerField(default=1, help_text="Which row this panel appears in (1-indexed).")
+    column = models.PositiveIntegerField(default=1, help_text="Left-to-right position within its row (1-indexed). Only ordering within the row matters — values don't need to be contiguous.")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["order", "id"]
+        ordering = ["row", "column", "id"]
 
     def __str__(self):
         return self.title or f"Panel {self.pk}"

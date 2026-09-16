@@ -1,3 +1,5 @@
+from collections import Counter
+
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.forms import formset_factory
@@ -25,6 +27,7 @@ REFRESH_CHOICES = [
 ]
 REFRESH_KEY = 'refresh_seconds'
 VALID_REFRESH_SECONDS = {value for value, _ in REFRESH_CHOICES}
+SPAN_BY_COUNT = {1: 12, 2: 6, 3: 4, 4: 3, 5: 2, 6: 2, 7: 1, 8: 1, 9: 1, 10: 1, 11: 1, 12: 1}
 
 
 def stored_refresh_seconds(dashboard):
@@ -122,10 +125,20 @@ def build_panel_data(dashboard, params, request):
     Returns:
         list: One dict per panel, carrying either 'data' or 'error'.
     """
+    panels = list(dashboard.panels.all())
+    row_counts = Counter(panel.row for panel in panels)
     panel_data = []
-    for panel in dashboard.panels.all():
+    previous_row = None
+    for panel in panels:
+        entry = {
+            'panel': panel,
+            'col_span': SPAN_BY_COUNT.get(row_counts[panel.row], 1),
+            'row_start': panel.row != previous_row,
+        }
+        previous_row = panel.row
         if not panel.search:
-            panel_data.append({'panel': panel, 'data': None})
+            entry['data'] = None
+            panel_data.append(entry)
             continue
         try:
             result = run_pipeline(
@@ -134,12 +147,10 @@ def build_panel_data(dashboard, params, request):
                 request=request,
                 environ=params,
             )
-            panel_data.append({
-                'panel': panel,
-                'data': coerce_to_list_of_dicts(result),
-            })
+            entry['data'] = coerce_to_list_of_dicts(result)
         except Exception as e:
-            panel_data.append({'panel': panel, 'error': str(e)})
+            entry['error'] = str(e)
+        panel_data.append(entry)
     return panel_data
 
 
