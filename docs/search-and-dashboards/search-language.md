@@ -50,7 +50,7 @@ search --filter='created__gte={last_day}' --order-by='["-created"]' --limit=100
 ## Transformations
 
 Registered commands include `annotate`, `filter`, `groupby`, `stats`, `sort`,
-`rename`, `unique`, `explode`, `event_split`, `drop`, `to_dataframe`, `head`,
+`rename`, `unique`, `dedup`, `explode`, `event_split`, `drop`, `to_dataframe`, `head`,
 `tail`, `join`, and `run_saved_search`. The command reference contains argument
 details.
 

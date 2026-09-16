@@ -438,6 +438,7 @@ SIEMATIC_SEARCH = {
         "search2.commands.head:HeadCmd",
         "search2.commands.tail:TailCmd",
         "search2.commands.unique:UniqueCmd",
+        "search2.commands.dedup:DedupCmd",
         "search2.commands.rename:RenameCmd",
         "search2.commands.stats:StatsCmd",
         "search2.commands.join:JoinCmd",

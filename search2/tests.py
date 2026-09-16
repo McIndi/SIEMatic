@@ -437,6 +437,52 @@ class TruncSecondTests(TestCase):
         self.assertTrue(callable(TruncSecond))
 
 
+class DedupTests(TestCase):
+    def setUp(self):
+        from events.models import Event
+
+        self.request = SimpleNamespace(user=User.objects.create_user(username='dedup-user'))
+        Event.objects.bulk_create([
+            Event(host=host, source=source, data=str(index))
+            for index, (host, source) in enumerate([
+                ('a', 'x'), ('b', 'x'), ('a', 'x'), ('a', 'y'), ('b', 'x'),
+            ])
+        ])
+        self.search = 'search --order-by=\'["id"]\''
+
+    def test_first_and_last_preserve_full_rows_and_survivor_order_on_all_backends(self):
+        for stage, backend in [
+            ('', 'qs'),
+            (' | fillnull --field=host --value=unknown', 'records'),
+            (' | to_dataframe', 'df'),
+        ]:
+            for keep, indices in [('first', [0, 1, 3]), ('last', [2, 3, 4])]:
+                with self.subTest(backend=backend, keep=keep):
+                    query = self.search + stage
+                    original = run_pipeline(None, query, request=self.request)
+                    if backend == 'records':
+                        self.assertIsInstance(original, list)
+                    rows = coerce_to_list_of_dicts(original)
+                    result = run_pipeline(
+                        None,
+                        query + f' | dedup --fields=\'["host", "source"]\' --keep={keep}',
+                        request=self.request,
+                    )
+                    self.assertEqual(coerce_to_list_of_dicts(result), [rows[i] for i in indices])
+
+    def test_default_keeps_first_full_row_unlike_unique_projection(self):
+        result = run_pipeline(
+            None, self.search + ' | dedup --fields=\'["host"]\'', request=self.request,
+        )
+        self.assertEqual([row['data'] for row in result], ['0', '1'])
+        from events.models import Event
+        self.assertEqual(set(result[0]), {field.name for field in Event._meta.fields})
+        unique = run_pipeline(
+            None, 'search | unique --fields=\'["host"]\'', request=self.request,
+        )
+        self.assertTrue(all(set(row) == {'host'} for row in unique))
+
+
 class ConditionalExpressionTests(TestCase):
     def test_functions_are_registered_for_queryset_only(self):
         from django.db.models import Case, When

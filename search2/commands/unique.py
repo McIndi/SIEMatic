@@ -3,6 +3,10 @@ from search2.engine.literals import parse_literal_list
 
 class UniqueCmd:
     """Unique command for getting distinct values for fields.
+
+    Keeps only the named fields, like SQL SELECT DISTINCT; all other columns
+    are dropped. Use dedup to keep one full row per group of values instead.
+
     Examples:
         unique --fields='["host"]'
         unique --fields='["host", "sourcetype"]'
