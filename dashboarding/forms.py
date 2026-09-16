@@ -6,7 +6,7 @@ from search2.engine.core import PIPELINE_BUILTIN_FIELDS
 class PanelForm(forms.ModelForm):
     class Meta:
         model = Panel
-        fields = ['search', 'visualization_type', 'chart_type', 'x_field', 'y_field', 'by_field', 'title', 'order', 'row', 'column']
+        fields = ['search', 'visualization_type', 'chart_type', 'x_field', 'y_field', 'by_field', 'title', 'row', 'column']
         widgets = {
             'search': forms.Textarea(attrs={'rows': 3}),
         }
@@ -23,7 +23,6 @@ PanelFormSet = inlineformset_factory(
     form=PanelForm,
     extra=1,  # Allow adding new panels
     can_delete=True,
-    can_order=True,
 )
 
 # Dynamic form for dashboard parameters
