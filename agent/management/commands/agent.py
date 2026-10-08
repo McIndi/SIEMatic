@@ -117,6 +117,7 @@ class Command(BaseCommand):
                         plugin_managers={
                             k: {
                                 'alive': m.children_alive(),
+                                'plugins_alive': m.plugins_alive(),
                                 'attempts': m.restart_attempts.get(m.plugin_path, 0),
                             }
                             for k, m in self.plugin_managers.items()

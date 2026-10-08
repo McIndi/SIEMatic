@@ -5,6 +5,7 @@ from queue import Queue
 from threading import Event
 from unittest.mock import patch
 
+import requests
 from django.test import SimpleTestCase
 
 from agent.plugins.kube_logs_plugin import (
@@ -27,7 +28,10 @@ class FakeKubernetesClient:
 
     def read_logs(self, pod_name, container, *, since_time=None, previous=False):
         self.calls.append(('logs', pod_name, container, since_time, previous))
-        return self.previous if previous else self.current
+        result = self.previous if previous else self.current
+        if isinstance(result, Exception):
+            raise result
+        return result
 
 
 def pod(*, uid='pod-uid-1', container='example-container', container_id='containerd://one', restart_count=0):
@@ -141,6 +145,64 @@ class KubeLogsPluginTests(SimpleTestCase):
         cursor = decode_cursor(batches[0]['cursor'])
         self.assertEqual(cursor['container_id'], 'containerd://two')
         self.assertEqual(cursor['restart_count'], 1)
+
+    def test_missing_previous_container_reports_gap_and_collects_current(self):
+        old_timestamp = '2026-09-07T12:00:00.000000000Z'
+        response = requests.Response()
+        response.status_code = 400
+        client = FakeKubernetesClient(
+            pod(container_id='containerd://two', restart_count=1),
+            previous=requests.HTTPError(response=response),
+            current='2026-09-07T12:00:02.000000000Z new-container-line\n',
+        )
+        plugin = self.make_plugin(client)
+        target_id = plugin.target_id(self.target)
+        plugin.acknowledged_positions[target_id] = encode_cursor({
+            'timestamp': old_timestamp,
+            'line_hashes': [],
+            'pod_uid': 'pod-uid-1',
+            'container_id': 'containerd://one',
+            'restart_count': 0,
+        })
+
+        with self.assertLogs('agent.plugins.kube_logs_plugin', 'WARNING'):
+            batches = plugin.collect_once()
+
+        status = plugin.event_queue.get_nowait()
+        self.assertEqual(status['collection_state'], 'partial')
+        self.assertEqual(status['collection_target'], target_id)
+        self.assertEqual(status['gap_start'], old_timestamp)
+        self.assertEqual(
+            [event['data'] for event in batches[0]['events']],
+            ['new-container-line'],
+        )
+        cursor = decode_cursor(batches[0]['cursor'])
+        self.assertEqual(cursor['container_id'], 'containerd://two')
+        self.assertEqual(cursor['restart_count'], 1)
+
+    def test_other_previous_container_errors_still_fail_the_target(self):
+        response = requests.Response()
+        response.status_code = 403
+        client = FakeKubernetesClient(
+            pod(container_id='containerd://two', restart_count=1),
+            previous=requests.HTTPError(response=response),
+            current='2026-09-07T12:00:02.000000000Z new-container-line\n',
+        )
+        plugin = self.make_plugin(client)
+        target_id = plugin.target_id(self.target)
+        plugin.acknowledged_positions[target_id] = encode_cursor({
+            'timestamp': '2026-09-07T12:00:00.000000000Z',
+            'line_hashes': [],
+            'pod_uid': 'pod-uid-1',
+            'container_id': 'containerd://one',
+            'restart_count': 0,
+        })
+
+        with self.assertLogs('agent.plugins.kube_logs_plugin', 'ERROR'):
+            self.assertEqual(plugin.collect_once(), [])
+
+        status = plugin.event_queue.get_nowait()
+        self.assertEqual(status['collection_state'], 'error')
 
     def test_vault_target_keeps_only_request_and_response_audit_records(self):
         vault_target = {

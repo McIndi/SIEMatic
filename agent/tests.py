@@ -30,8 +30,10 @@ from agent.plugins.base import (
     fetch_checkpoints,
 )
 from agent.plugins.plugin_process_manager import (
+    PluginProcessManager,
     config_log_summary,
     get_indexer_transport,
+    restart_limit_from_config,
     sender_process,
 )
 from agent.plugins.host_security_posture_plugin import HostSecurityPosturePlugin
@@ -492,6 +494,115 @@ class SenderProcessTests(SimpleTestCase):
         self.assertIs(failure['retryable'], False)
         self.assertEqual(failure['target'], batch['_target'])
         self.assertEqual(failure['batch_id'], batch['batch_id'])
+
+
+class _FakeProcess:
+    next_pid = 100
+
+    def __init__(self, target=None, args=()):
+        self.pid = None
+        self.alive = False
+
+    def start(self):
+        _FakeProcess.next_pid += 1
+        self.pid = _FakeProcess.next_pid
+        self.alive = True
+
+    def is_alive(self):
+        return self.alive
+
+
+class PluginRestartTests(SimpleTestCase):
+    def setUp(self):
+        self.now = 1000.0
+        patches = [
+            patch(
+                'agent.plugins.plugin_process_manager.multiprocessing.Process',
+                _FakeProcess,
+            ),
+            patch(
+                'agent.plugins.plugin_process_manager.time.monotonic',
+                lambda: self.now,
+            ),
+        ]
+        for patcher in patches:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def make_manager(self, **config):
+        manager = PluginProcessManager(
+            'agent.plugins.example_plugin:ExamplePlugin',
+            {'restart_backoff': 10, 'restart_backoff_max': 60, **config},
+            indexer_cfg={},
+        )
+        manager.sender_proc = _FakeProcess()
+        manager.sender_proc.start()
+        manager._start_plugin_process()
+        return manager
+
+    def crash(self, manager):
+        manager.child_processes[0].alive = False
+
+    def test_restart_config_follows_crawler_convention(self):
+        self.assertIsNone(restart_limit_from_config(True))
+        self.assertEqual(restart_limit_from_config(False), 0)
+        self.assertEqual(restart_limit_from_config(3), 3)
+        with self.assertRaises(ValueError):
+            restart_limit_from_config(-1)
+
+    def test_default_keeps_restarting_with_capped_exponential_backoff(self):
+        manager = self.make_manager()
+        delays = []
+        with self.assertLogs('agent.plugins.plugin_process_manager', 'WARNING'):
+            for _ in range(6):
+                self.crash(manager)
+                manager.check_and_restart()
+                self.assertEqual(manager.plugins_alive(), 0)
+                delays.append(manager.next_restart_at - self.now)
+                self.now = manager.next_restart_at
+                manager.check_and_restart()
+                self.assertEqual(manager.plugins_alive(), 1)
+
+        self.assertEqual(delays, [10, 20, 40, 60, 60, 60])
+        self.assertEqual(manager.restart_attempts[manager.plugin_path], 6)
+
+    def test_restart_waits_for_backoff_without_blocking(self):
+        manager = self.make_manager()
+        self.crash(manager)
+        with self.assertLogs('agent.plugins.plugin_process_manager', 'WARNING'):
+            manager.check_and_restart()
+
+        self.now += 9
+        manager.check_and_restart()
+        self.assertEqual(manager.plugins_alive(), 0)
+        self.assertEqual(manager.children_alive(), 1)
+
+        self.now += 1
+        manager.check_and_restart()
+        self.assertEqual(manager.plugins_alive(), 1)
+
+    def test_stable_process_resets_attempts(self):
+        manager = self.make_manager(restart_reset_after=300)
+        manager.restart_attempts[manager.plugin_path] = 4
+        self.now += 301
+        self.crash(manager)
+        with self.assertLogs('agent.plugins.plugin_process_manager', 'WARNING'):
+            manager.check_and_restart()
+
+        self.assertEqual(manager.next_restart_at - self.now, 10)
+
+    def test_integer_limit_still_stops_restarting(self):
+        manager = self.make_manager(restart=1)
+        with self.assertLogs('agent.plugins.plugin_process_manager', 'WARNING'):
+            self.crash(manager)
+            manager.check_and_restart()
+            self.now = manager.next_restart_at
+            manager.check_and_restart()
+            self.crash(manager)
+            manager.check_and_restart()
+
+        self.assertIsNone(manager.next_restart_at)
+        self.assertEqual(manager.plugins_alive(), 0)
 
 
 class ExampleCheckpointedPlugin(CheckpointedPlugin):

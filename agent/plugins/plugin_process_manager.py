@@ -306,18 +306,45 @@ def sender_process(event_queue, indexer_cfg, credentials=None, ack_queue=None):
         logger.exception(f"Exception in sender_process: {e}")
 
 
+def restart_limit_from_config(value):
+    """
+    Return the most consecutive restarts allowed, or None for no limit.
+
+    Matches the crawler convention: True restarts forever, False never
+    restarts, and an integer caps consecutive failed restarts.
+    """
+    if value is True:
+        return None
+    if value is False:
+        return 0
+    limit = int(value)
+    if limit < 0:
+        raise ValueError('restart must be True, False, or a non-negative integer')
+    return limit
+
+
 class PluginProcessManager:
     """
     Manage the lifecycle of plugin processes, including starting, stopping,
     and monitoring their status. Also manages the sender process for
     communicating with the indexer.
+
+    A plugin that exits is restarted after an exponential backoff, so a
+    source that stays unreachable for minutes is retried until it returns
+    instead of exhausting its attempts in a few seconds. A process that
+    stays up for restart_reset_after seconds clears its attempt count.
     """
     def __init__(self, plugin_path, config, indexer_cfg, credentials=None):
         self.plugin_path = plugin_path
         self.config = config
         self.indexer_cfg = indexer_cfg
         self.credentials = credentials
-        self.restart_limit = config.get('restart', 3)
+        self.restart_limit = restart_limit_from_config(config.get('restart', True))
+        self.restart_backoff = float(config.get('restart_backoff', 1))
+        self.restart_backoff_max = float(config.get('restart_backoff_max', 300))
+        self.restart_reset_after = float(config.get('restart_reset_after', 300))
+        self.next_restart_at = None
+        self.started_at = {}  # monotonic start time keyed by PID
         self.child_processes = []
         self.restart_attempts = {}  # key by plugin_path
         queue_size = int(config.get('queue_size', 100))
@@ -331,11 +358,7 @@ class PluginProcessManager:
             config_log_summary(config),
         )
 
-    def start(self):
-        """
-        Start the plugin process and the sender process.
-        """
-        logger.info(f"Starting plugin process for {self.plugin_path}")
+    def _start_plugin_process(self):
         proc = multiprocessing.Process(
             target=run_plugin,
             args=(
@@ -347,8 +370,17 @@ class PluginProcessManager:
             ),
         )
         proc.start()
-        logger.info(f"Started plugin process with PID {proc.pid}")
+        self.started_at[proc.pid] = time.monotonic()
         self.child_processes.append(proc)
+        return proc
+
+    def start(self):
+        """
+        Start the plugin process and the sender process.
+        """
+        logger.info(f"Starting plugin process for {self.plugin_path}")
+        proc = self._start_plugin_process()
+        logger.info(f"Started plugin process with PID {proc.pid}")
         self.restart_attempts[self.plugin_path] = 0  # initialize attempts by plugin_path
         # Start sender process
         if not self.sender_proc or not self.sender_proc.is_alive():
@@ -368,29 +400,38 @@ class PluginProcessManager:
     def check_and_restart(self):
         """
         Check the status of child processes and restart them if they are not alive.
+
+        Restarts wait min(restart_backoff * 2**attempts, restart_backoff_max)
+        seconds. The wait is checked on each call rather than slept, so the
+        caller's heartbeat keeps running while a restart is pending.
         """
+        now = time.monotonic()
         for proc in list(self.child_processes):
-            if not proc.is_alive():
-                attempts = self.restart_attempts.get(self.plugin_path, 0)  # get attempts by plugin_path
-                logger.warning(f"Plugin process PID {proc.pid} is not alive. Restart attempts: {attempts}")
-                if attempts < self.restart_limit:
-                    new_proc = multiprocessing.Process(
-                        target=run_plugin,
-                        args=(
-                            self.plugin_path,
-                            self.config,
-                            self.event_queue,
-                            self.ack_queue,
-                            self.stop_event,
-                        ),
-                    )
-                    new_proc.start()
-                    logger.info(f"Restarted plugin process with new PID {new_proc.pid}")
-                    self.child_processes.append(new_proc)
-                    self.restart_attempts[self.plugin_path] = attempts + 1  # increment by plugin_path
-                else:
-                    logger.error(f"Restart limit reached for plugin process PID {proc.pid}")
-                self.child_processes.remove(proc)
+            if proc.is_alive():
+                continue
+            self.child_processes.remove(proc)
+            lifetime = now - self.started_at.pop(proc.pid, now)
+            if lifetime >= self.restart_reset_after:
+                self.restart_attempts[self.plugin_path] = 0
+            attempts = self.restart_attempts.get(self.plugin_path, 0)  # get attempts by plugin_path
+            if self.restart_limit is not None and attempts >= self.restart_limit:
+                logger.error(f"Restart limit reached for plugin process PID {proc.pid}")
+                continue
+            delay = min(
+                self.restart_backoff * 2 ** min(attempts, 32),
+                self.restart_backoff_max,
+            )
+            self.next_restart_at = now + delay
+            logger.warning(
+                "Plugin process PID %s exited after %.0fs. Restarting in %.0fs "
+                "(attempt %d)", proc.pid, lifetime, delay, attempts + 1,
+            )
+        if self.next_restart_at is not None and now >= self.next_restart_at:
+            self.next_restart_at = None
+            new_proc = self._start_plugin_process()
+            logger.info(f"Restarted plugin process with new PID {new_proc.pid}")
+            attempts = self.restart_attempts.get(self.plugin_path, 0)
+            self.restart_attempts[self.plugin_path] = attempts + 1  # increment by plugin_path
         # Restart sender if needed
         if self.sender_proc and not self.sender_proc.is_alive():
             logger.warning(f"Sender process PID {self.sender_proc.pid} is not alive. Attempting restart.")
@@ -405,6 +446,15 @@ class PluginProcessManager:
             )
             self.sender_proc.start()
             logger.info(f"Restarted sender process with PID {self.sender_proc.pid}")
+
+    def plugins_alive(self):
+        """
+        Count live plugin processes, excluding the sender.
+
+        children_alive() includes the sender, which keeps heartbeats flowing
+        on its own, so a collector that has died is easy to miss there.
+        """
+        return sum(p.is_alive() for p in self.child_processes)
 
     def children_alive(self):
         """

@@ -289,12 +289,38 @@ class KubeLogsPlugin(CheckpointedPlugin):
             )
             streams.append((self._parse_lines(raw), cursor, identity))
         elif same_pod:
-            previous = self.client.read_logs(
-                pod_name,
-                target['container'],
-                since_time=cursor['timestamp'],
-                previous=True,
-            )
+            try:
+                previous = self.client.read_logs(
+                    pod_name,
+                    target['container'],
+                    since_time=cursor['timestamp'],
+                    previous=True,
+                )
+            except requests.HTTPError as exc:
+                # The kubelet keeps only the most recent terminated container.
+                # When the container restarted again, or the node lost it, the
+                # API answers 400 for previous=true. Retrying never succeeds,
+                # so record the gap and move on to the current container
+                # instead of stalling this target forever.
+                if exc.response is None or exc.response.status_code not in (400, 404):
+                    raise
+                logger.warning(
+                    'Previous container logs for %s are unavailable; lines '
+                    'written after %s by container %s were not collected',
+                    target_id,
+                    cursor['timestamp'],
+                    cursor['container_id'],
+                )
+                self.enqueue_batch(collection_status(
+                    'partial',
+                    source='kube_logs',
+                    host=self.agent.get('hostname') or 'localhost',
+                    error='previous container logs unavailable',
+                    collection_target=target_id,
+                    gap_start=cursor['timestamp'],
+                    gap_container_id=cursor['container_id'],
+                ))
+                previous = ''
             current = self.client.read_logs(
                 pod_name, target['container'], since_time=None
             )
